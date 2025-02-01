@@ -359,6 +359,9 @@ class PointWithAngle(NamedTuple):
     row: int
     angle: float
 
+def is_close(row_0: int, column_0: int, row_1: int, column_1: int, radius: int) -> bool:
+    return (column_0 - column_1) ** 2 + (row_0 - row_1) ** 2 <= (radius ** 2)
+
 def angles_abs_difference(angle_0: float, angle_1: float) -> float:
     angles_abs_difference = abs(angle_0 - angle_1)
     return min(angles_abs_difference, 2 * PI - angles_abs_difference)
@@ -399,15 +402,37 @@ class NeighborYOffset(IntEnum):
     Center = 0
     Top = 1
 
-class CenterNeighbor(NamedTuple):
+class Neighbor(NamedTuple):
     row_offset: NeighborYOffset
     column_offset: NeighborXOffset
     distance_from_center: float
 
     @staticmethod
-    def new(vertical_spot: NeighborYOffset, horizontal_spot: NeighborXOffset) -> CenterNeighbor:
+    def new(vertical_spot: NeighborYOffset, horizontal_spot: NeighborXOffset) -> Neighbor:
         distance = (horizontal_spot ** 2 + vertical_spot ** 2) ** 0.5
-        return CenterNeighbor(vertical_spot, horizontal_spot, distance)
+        return Neighbor(vertical_spot, horizontal_spot, distance)
+
+def get_neighbor_direction(
+    directional_map: NDArray[f32],
+    block_length: int,
+    block_row: int,
+    block_column: int,
+    neighbor: Neighbor,
+) -> f32:
+    neighbor_row = block_row + neighbor.row_offset * block_length
+    neighbor_column = block_column + neighbor.column_offset * block_length
+    neighbor_direction: f32 = directional_map[neighbor_row, neighbor_column]
+    return neighbor_direction
+
+def compute_direction_difference(next_neighbor_direction: f32, neighbor_direction: f32) -> f32:
+    direction_difference = next_neighbor_direction - neighbor_direction
+    if direction_difference > (PI_DIV_2):
+        direction_difference = f32(PI) - direction_difference
+    elif direction_difference < (-PI_DIV_2):
+        direction_difference = f32(PI) + direction_difference
+    else:
+        direction_difference = -direction_difference
+    return direction_difference
 
 def compute_crossing_number(neighbors: NDArray[u8]) -> int:
     return numpy.count_nonzero(neighbors < numpy.roll(neighbors, shift = -1))
@@ -421,14 +446,14 @@ def bits(number: int, bits_to_extract: int) -> Generator[int]:
         bits_to_extract -= 1
 
 NEIGHBORS = [
-    CenterNeighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Left),
-    CenterNeighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Center),
-    CenterNeighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Right),
-    CenterNeighbor.new(NeighborYOffset.Center, NeighborXOffset.Right),
-    CenterNeighbor.new(NeighborYOffset.Top, NeighborXOffset.Right),
-    CenterNeighbor.new(NeighborYOffset.Top, NeighborXOffset.Center),
-    CenterNeighbor.new(NeighborYOffset.Top, NeighborXOffset.Left),
-    CenterNeighbor.new(NeighborYOffset.Center, NeighborXOffset.Left),
+    Neighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Left),
+    Neighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Center),
+    Neighbor.new(NeighborYOffset.Bottom, NeighborXOffset.Right),
+    Neighbor.new(NeighborYOffset.Center, NeighborXOffset.Right),
+    Neighbor.new(NeighborYOffset.Top, NeighborXOffset.Right),
+    Neighbor.new(NeighborYOffset.Top, NeighborXOffset.Center),
+    Neighbor.new(NeighborYOffset.Top, NeighborXOffset.Left),
+    Neighbor.new(NeighborYOffset.Center, NeighborXOffset.Left),
 ]
 CENTER_NEIGHBORS_BIT_FIELD = [numpy.fromiter(bits(number, U8_BITS), dtype = u8) for number in range(U8_MAX + 1)]
 
@@ -453,32 +478,6 @@ def compute_next_ridge_following_direction(previous_direction: int, neighbors: N
     return next_positions
 
 DIRECTIONS_DISTANCES_LUT = [[compute_next_ridge_following_direction(direction, neighbors) for direction in range(len(NEIGHBORS) + 1)] for neighbors in CENTER_NEIGHBORS_BIT_FIELD]
-
-def get_neighbor_direction(
-    directional_map: NDArray[f32],
-    half_block_length: int,
-    block_row: int,
-    block_column: int,
-    neighbor_index: int,
-) -> f32:
-    block_length = 2 * half_block_length
-    neighbor = NEIGHBORS[neighbor_index]
-    neighbor_block_row = block_row - neighbor.row_offset
-    neighbor_block_column = block_column - neighbor.column_offset
-    neighbor_row = neighbor_block_row * block_length + half_block_length
-    neighbor_column = neighbor_block_column * block_length + half_block_length
-    neighbor_direction: f32 = directional_map[neighbor_row, neighbor_column]
-    return neighbor_direction
-
-def compute_direction_difference(next_neighbor_direction: f32, neighbor_direction: f32) -> f32:
-    direction_difference = next_neighbor_direction - neighbor_direction
-    if direction_difference > (PI_DIV_2):
-        direction_difference = f32(PI) - direction_difference
-    elif direction_difference < (-PI_DIV_2):
-        direction_difference = f32(PI) + direction_difference
-    else:
-        direction_difference = -direction_difference
-    return direction_difference
 
 def follow_ridge_and_compute_angle(
     minutia_row: int,
@@ -550,18 +549,29 @@ class Singularities:
 
         fingerprint_rows, fingerprint_columns = directional_map.shape
         half_directional_map_block_length = directional_map_block_length // 2
-        directional_map_block_rows = fingerprint_rows // directional_map_block_length
-        directional_map_block_columns = fingerprint_columns // directional_map_block_length
-        for block_row in range(1, directional_map_block_rows - 1):
-            center_row = block_row * directional_map_block_length + half_directional_map_block_length
-            for block_column in range(1, directional_map_block_columns - 1):
-                center_column = block_column * directional_map_block_length + half_directional_map_block_length
-
+        block_start = directional_map_block_length + half_directional_map_block_length - 1
+        block_row_end = fingerprint_rows - directional_map_block_length
+        block_column_end = fingerprint_columns - directional_map_block_length
+        for block_row in range(block_start, block_row_end, directional_map_block_length):
+            for block_column in range(block_start, block_column_end, directional_map_block_length):
                 total_direction_difference = 0.0
-                neighbor_direction = get_neighbor_direction(directional_map, half_directional_map_block_length, block_row, block_column, 0)
+                neighbors = iter(NEIGHBORS)
+                neighbor_direction = get_neighbor_direction(
+                    directional_map,
+                    directional_map_block_length,
+                    block_row,
+                    block_column,
+                    next(neighbors)
+                )
                 last_neighbor_direction = neighbor_direction
-                for next_neighbor_index in range(1, len(NEIGHBORS)):
-                    next_neighbor_direction = get_neighbor_direction(directional_map, half_directional_map_block_length, block_row, block_column, next_neighbor_index)
+                for next_neighbor in neighbors:
+                    next_neighbor_direction = get_neighbor_direction(
+                        directional_map,
+                        directional_map_block_length,
+                        block_row,
+                        block_column,
+                        next_neighbor
+                    )
                     total_direction_difference += compute_direction_difference(next_neighbor_direction, neighbor_direction)
                     neighbor_direction = next_neighbor_direction
                 total_direction_difference += compute_direction_difference(last_neighbor_direction, neighbor_direction)
@@ -570,13 +580,12 @@ class Singularities:
                 singularity: Singularity
                 match poincare_index:
                     case SingualirtyPoincareIndex.Core:
-                        singularity = Core(center_column, center_row)
+                        singularity = Core(block_column, block_row)
                     case SingualirtyPoincareIndex.Delta:
-                        singularity = Delta(center_column, center_row)
+                        singularity = Delta(block_column, block_row)
                     case SingualirtyPoincareIndex.Whorl:
-                        singularity = Whorl(center_column, center_row)
+                        singularity = Whorl(block_column, block_row)
                     case _: continue
-
                 self.all.append(singularity)
 
         self.filtered = []
@@ -708,9 +717,6 @@ class FingerprintFeatures:
         pixels_distance_threshold: int,
         # angles_distance_threshold: int,
     ) -> float:
-        def is_close(row_0: int, column_0: int, row_1: int, column_1: int, radius: int) -> bool:
-            return (column_0 - column_1) ** 2 + (row_0 - row_1) ** 2 <= (radius ** 2)
-
         # def is_aligned(angle_0: float, angle_1: float, angles_distance_threshold: int) -> bool:
         #     threshold = math.radians(angles_distance_threshold)
         #     return angles_abs_difference(angle_0, angle_1) <= threshold
@@ -888,25 +894,25 @@ class Fingerprint:
         file_path: str,
         acquisition_tag: str,
         *,
-        gradient_sobel_filter_length: int = GRADIENT_SOBEL_FILTER_LENGTH,
-        gradient_module_block_length: int = GRADIENT_MODULE_BLOCK_LENGTH,
-        segmentation_mask_threshold_scale: float = SEGMENTATION_MASK_THRESHOLD_SCALE,
-        directional_map_block_length: int = DIRECTIONAL_MAP_BLOCK_LENGTH,
-        directional_map_blur_filter_length: int = DIRECTIONAL_MAP_BLUR_FILTER_LENGTH,
-        local_ridge_block_rows: int = LOCAL_RIDGE_BLOCK_ROWS,
-        local_ridge_block_columns: int = LOCAL_RIDGE_BLOCK_COLUMNS,
-        gabor_filters_count: int = GABOR_FILTERS_COUNT,
-        gabor_filters_sigma: float = GABOR_FILTERS_GAMMA,
-        gabor_filters_gamma: float = GABOR_FILTERS_SIGMA,
-        binarization_threshold: int = BINARIZATION_THRESHOLD,
-        singularities_min_distance_from_border: float = SINGULARITIES_MIN_DISTANCE_FROM_BORDER,
-        minutiae_min_distance_from_border: float = MINUTIAE_MIN_DISTANCE_FROM_BORDER,
-        minutiae_followed_length_min: int = MINUTIAE_FOLLOWED_LENGTH_MIN,
-        minutiae_followed_length_max: int = MINUTIAE_FOLLOWED_LENGTH_MAX,
+        gradient_sobel_filter_length: int,
+        gradient_module_block_length: int,
+        segmentation_mask_threshold_scale: float,
+        directional_map_block_length: int,
+        directional_map_blur_filter_length: int,
+        local_ridge_block_rows: int,
+        local_ridge_block_columns: int,
+        gabor_filters_count: int,
+        gabor_filters_sigma: float,
+        gabor_filters_gamma: float,
+        binarization_threshold: int,
+        singularities_min_distance_from_border: int,
+        minutiae_min_distance_from_border: float,
+        minutiae_followed_length_min: int,
+        minutiae_followed_length_max: int,
         mcc_reference_cell_coordinates: MccReferenceCellCoordinates | None,
-        mcc_gaussian_std: float = MCC_GAUSSIAN_STD,
-        mcc_sigmoid_tau: float = MCC_SIGMOID_TAU,
-        mcc_sigmoid_mu: float = MCC_SIGMOID_MU,
+        mcc_gaussian_std: float,
+        mcc_sigmoid_tau: float,
+        mcc_sigmoid_mu: float,
     ) -> None:
         self.raw_fingerprint: NDArray[u8] = cv2.imread(file_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
         self.normalized_fingerprint = normalize_pixels(self.raw_fingerprint)
@@ -1091,21 +1097,32 @@ class Fingerprint:
         singularities: list[Singularity] = []
 
         half_directional_map_block_length = directional_map_block_length // 2
-        directional_map_block_rows = fingerprint_rows // directional_map_block_length
-        directional_map_block_columns = fingerprint_columns // directional_map_block_length
-        for block_row in range(1, directional_map_block_rows - 1):
-            center_row = block_row * directional_map_block_length + half_directional_map_block_length
-            for block_column in range(1, directional_map_block_columns - 1):
-                center_column = block_column * directional_map_block_length + half_directional_map_block_length
-
-                if self.segmentation_mask_distance_map[center_row, center_column] <= singularities_min_distance_from_border:
+        block_start = directional_map_block_length + half_directional_map_block_length - 1
+        block_row_end = fingerprint_rows - directional_map_block_length
+        block_column_end = fingerprint_columns - directional_map_block_length
+        for block_row in range(block_start, block_row_end, directional_map_block_length):
+            for block_column in range(block_start, block_column_end, directional_map_block_length):
+                if self.segmentation_mask_distance_map[block_row, block_column] <= singularities_min_distance_from_border:
                     continue
 
                 total_direction_difference = 0.0
-                neighbor_direction = get_neighbor_direction(self.directional_map, half_directional_map_block_length, block_row, block_column, 0)
+                neighbors = iter(NEIGHBORS)
+                neighbor_direction = get_neighbor_direction(
+                    self.directional_map,
+                    directional_map_block_length,
+                    block_row,
+                    block_column,
+                    next(neighbors)
+                )
                 last_neighbor_direction = neighbor_direction
-                for next_neighbor_index in range(1, len(NEIGHBORS)):
-                    next_neighbor_direction = get_neighbor_direction(self.directional_map, half_directional_map_block_length, block_row, block_column, next_neighbor_index)
+                for next_neighbor in neighbors:
+                    next_neighbor_direction = get_neighbor_direction(
+                        self.directional_map,
+                        directional_map_block_length,
+                        block_row,
+                        block_column,
+                        next_neighbor
+                    )
                     total_direction_difference += compute_direction_difference(next_neighbor_direction, neighbor_direction)
                     neighbor_direction = next_neighbor_direction
                 total_direction_difference += compute_direction_difference(last_neighbor_direction, neighbor_direction)
@@ -1114,13 +1131,12 @@ class Fingerprint:
                 singularity: Singularity
                 match poincare_index:
                     case SingualirtyPoincareIndex.Core:
-                        singularity = Core(center_column, center_row)
+                        singularity = Core(block_column, block_row)
                     case SingualirtyPoincareIndex.Delta:
-                        singularity = Delta(center_column, center_row)
+                        singularity = Delta(block_column, block_row)
                     case SingualirtyPoincareIndex.Whorl:
-                        singularity = Whorl(center_column, center_row)
+                        singularity = Whorl(block_column, block_row)
                     case _: continue
-
                 singularities.append(singularity)
 
         # CROSSING NUMBERS AND MINUTIAE EXTRACTION
@@ -1254,7 +1270,7 @@ class Fingerprint:
         )
 
     @staticmethod
-    def from_config(
+    def from_config_object(
         file_path: str,
         acquisition_tag: str,
         *,
@@ -1281,6 +1297,7 @@ class Fingerprint:
             gabor_filters_gamma = config.gabor_filters_gamma,
             gabor_filters_sigma = config.gabor_filters_sigma,
             binarization_threshold = config.binarization_threshold.value,
+            singularities_min_distance_from_border = config.singularities_min_distance_from_border.value,
             minutiae_min_distance_from_border = config.minutiae_min_distance_from_border.value,
             minutiae_followed_length_min = config.minutiae_followed_length.low,
             minutiae_followed_length_max = config.minutiae_followed_length.high,
@@ -1288,4 +1305,59 @@ class Fingerprint:
             mcc_gaussian_std = config.mcc_gaussian_std,
             mcc_sigmoid_tau = config.mcc_sigmoid_tau,
             mcc_sigmoid_mu = config.mcc_sigmoid_mu,
+        )
+
+    @staticmethod
+    def from_config(
+        file_path: str,
+        acquisition_tag: str,
+        *,
+        gradient_sobel_filter_length: int = GRADIENT_SOBEL_FILTER_LENGTH,
+        gradient_module_block_length: int = GRADIENT_MODULE_BLOCK_LENGTH,
+        segmentation_mask_threshold_scale: float = SEGMENTATION_MASK_THRESHOLD_SCALE,
+        directional_map_block_length: int = DIRECTIONAL_MAP_BLOCK_LENGTH,
+        directional_map_blur_filter_length: int = DIRECTIONAL_MAP_BLUR_FILTER_LENGTH,
+        local_ridge_block_rows: int = LOCAL_RIDGE_BLOCK_ROWS,
+        local_ridge_block_columns: int = LOCAL_RIDGE_BLOCK_COLUMNS,
+        gabor_filters_count: int = GABOR_FILTERS_COUNT,
+        gabor_filters_sigma: float = GABOR_FILTERS_GAMMA,
+        gabor_filters_gamma: float = GABOR_FILTERS_SIGMA,
+        binarization_threshold: int = BINARIZATION_THRESHOLD,
+        singularities_min_distance_from_border: int = SINGULARITIES_MIN_DISTANCE_FROM_BORDER,
+        minutiae_min_distance_from_border: float = MINUTIAE_MIN_DISTANCE_FROM_BORDER,
+        minutiae_followed_length_min: int = MINUTIAE_FOLLOWED_LENGTH_MIN,
+        minutiae_followed_length_max: int = MINUTIAE_FOLLOWED_LENGTH_MAX,
+        mcc_reference_cell_coordinates: MccReferenceCellCoordinates | None,
+        mcc_gaussian_std: float = MCC_GAUSSIAN_STD,
+        mcc_sigmoid_tau: float = MCC_SIGMOID_TAU,
+        mcc_sigmoid_mu: float = MCC_SIGMOID_MU,
+    ) -> Fingerprint:
+        if mcc_reference_cell_coordinates is None:
+            mcc_reference_cell_coordinates = MccReferenceCellCoordinates(
+                MCC_TOTAL_RADIUS,
+                MCC_CIRCLES_RADIUS,
+            )
+
+        return Fingerprint(
+            file_path = file_path,
+            acquisition_tag = acquisition_tag,
+            gradient_sobel_filter_length = gradient_sobel_filter_length,
+            gradient_module_block_length = gradient_module_block_length,
+            segmentation_mask_threshold_scale = segmentation_mask_threshold_scale,
+            directional_map_block_length = directional_map_block_length,
+            directional_map_blur_filter_length = directional_map_blur_filter_length,
+            local_ridge_block_rows = local_ridge_block_rows,
+            local_ridge_block_columns = local_ridge_block_columns,
+            gabor_filters_count = gabor_filters_count,
+            gabor_filters_gamma = gabor_filters_gamma,
+            gabor_filters_sigma = gabor_filters_sigma,
+            binarization_threshold = binarization_threshold,
+            singularities_min_distance_from_border = singularities_min_distance_from_border,
+            minutiae_min_distance_from_border = minutiae_min_distance_from_border,
+            minutiae_followed_length_min = minutiae_followed_length_min,
+            minutiae_followed_length_max = minutiae_followed_length_max,
+            mcc_reference_cell_coordinates = mcc_reference_cell_coordinates,
+            mcc_gaussian_std = mcc_gaussian_std,
+            mcc_sigmoid_tau = mcc_sigmoid_tau,
+            mcc_sigmoid_mu = mcc_sigmoid_mu,
         )

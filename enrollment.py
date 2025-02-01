@@ -65,7 +65,7 @@ f"""Error: wrong file format
         strict = True
     ):
         print(f"Info: enrolling `{fingerprint_file_path}`")
-        fingerprint = Fingerprint(
+        fingerprint = Fingerprint.from_config(
             fingerprint_file_path,
             acquisition_tag,
             mcc_reference_cell_coordinates = mcc_reference_cell_coordinates,

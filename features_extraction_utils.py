@@ -15,7 +15,7 @@ import html
 import base64
 import IPython.display
 
-from fingerprint import FE_CONFIG, FM_CONFIG, Bifurcation, BifurcationWithAngle, Bounds, Core, Delta, FingerprintFeatures, Minutia, MinutiaWithAngle, PointWithAngle, Range, Singularity, Termination, TerminationWithAngle, Whorl, angles_abs_difference
+from fingerprint import FE_CONFIG, FM_CONFIG, Bifurcation, BifurcationWithAngle, Bounds, Core, Delta, FingerprintFeatures, Minutia, MinutiaWithAngle, Point, PointWithAngle, Range, Singularity, Termination, TerminationWithAngle, Whorl, angles_abs_difference
 
 class ColorBGR(NamedTuple):
     b: int
@@ -197,7 +197,7 @@ def draw_singularities(
             case Core():
                 _ = cv2.circle(
                     fingerprint_with_singularities,
-                    center = singularity,
+                    center = (singularity.column - CORE_RADIUS, singularity.row - CORE_RADIUS),
                     radius = CORE_RADIUS,
                     color = CORE_COLOR,
                     thickness = 1,
@@ -206,36 +206,36 @@ def draw_singularities(
             case Whorl():
                 _ = cv2.circle(
                     fingerprint_with_singularities,
-                    center = singularity,
+                    center = (singularity.column - WHORL_RADIUS, singularity.row - WHORL_RADIUS),
                     radius = WHORL_RADIUS,
                     color = WHORL_COLOR,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
             case Delta():
-                bottom_left_vertex = (singularity.column - HALF_DELTA_BASE, singularity.row + HALF_DELTA_HEIGHT)
-                bottom_right_vertex = (singularity.column + HALF_DELTA_BASE, singularity.row + HALF_DELTA_HEIGHT)
-                top_vertex = (singularity.column, singularity.row - HALF_DELTA_HEIGHT)
+                bottom_left_vertex = Point(singularity.column - HALF_DELTA_BASE, singularity.row + HALF_DELTA_HEIGHT)
+                bottom_right_vertex = Point(singularity.column + HALF_DELTA_BASE, singularity.row + HALF_DELTA_HEIGHT)
+                top_vertex = Point(singularity.column, singularity.row - HALF_DELTA_HEIGHT)
                 _ = cv2.line(
                     fingerprint_with_singularities,
-                    pt1 = bottom_left_vertex,
-                    pt2 = bottom_right_vertex,
+                    pt1 = (bottom_left_vertex.column - HALF_DELTA_BASE, bottom_left_vertex.row - HALF_DELTA_BASE),
+                    pt2 = (bottom_right_vertex.column - HALF_DELTA_BASE, bottom_right_vertex.row - HALF_DELTA_BASE),
                     color = DELTA_COLOR,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
                 _ = cv2.line(
                     fingerprint_with_singularities,
-                    pt1 = bottom_right_vertex,
-                    pt2 = top_vertex,
+                    pt1 = (bottom_right_vertex.column - HALF_DELTA_BASE, bottom_right_vertex.row - HALF_DELTA_BASE),
+                    pt2 = (top_vertex.column - HALF_DELTA_BASE, top_vertex.row - HALF_DELTA_BASE),
                     color = DELTA_COLOR,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
                 _ = cv2.line(
                     fingerprint_with_singularities,
-                    pt1 = top_vertex,
-                    pt2 = bottom_left_vertex,
+                    pt1 = (top_vertex.column - HALF_DELTA_BASE, top_vertex.row - HALF_DELTA_BASE),
+                    pt2 = (bottom_left_vertex.column - HALF_DELTA_BASE, bottom_left_vertex.row - HALF_DELTA_BASE),
                     color = DELTA_COLOR,
                     thickness = 1,
                     lineType = cv2.LINE_AA
