@@ -2,13 +2,14 @@ from __future__ import annotations
 import sys
 import os
 import numpy
-from fingerprint import FE_CONFIG, Fingerprint, FingerprintAcquisition, MccReferenceCellCoordinates
-from utils import DATABASE_DIR_PATH, DATASET_DIR_PATH, FINGERPRINTS_IMAGE_FILE_EXTENSION, ExitCode, on_walk_error_raise
+from fingerprint import FE_CONFIG, Fingerprint, MccReferenceCellCoordinates
+from config import DATABASE_DIR_PATH, DATASET_DIR_PATH, FINGERPRINTS_IMAGE_FILE_EXTENSION
+from utils import FINGERPRINTS_DATABASE_FILE_EXTENSION, ExitCode, on_walk_error_raise
 
 dataset_dir_path = os.path.normpath(DATASET_DIR_PATH)
 database_dir_path = os.path.normpath(DATABASE_DIR_PATH)
 
-type DatabaseEnrollment = dict[str, list[FingerprintAcquisition]]
+type DatabaseEnrollment = dict[str, list[Fingerprint]]
 
 
 def main() -> ExitCode:
@@ -23,7 +24,6 @@ def main() -> ExitCode:
             if file_extension != FINGERPRINTS_IMAGE_FILE_EXTENSION:
                 pointers_and_cause_offset = len(fingerprint_file_path) - len(file_extension)
                 pointers = "^" * len(file_extension)
-
                 print(
 f"""Warning: ignoring file `{fingerprint_file_path}`, wrong file extension
 |
@@ -65,13 +65,13 @@ f"""Error: wrong file format
         strict = True
     ):
         print(f"Info: enrolling `{fingerprint_file_path}`")
-        fingerprint = Fingerprint.from_config(
+        fingerprint = Fingerprint.from_config_object(
             fingerprint_file_path,
             acquisition_tag,
             mcc_reference_cell_coordinates = mcc_reference_cell_coordinates,
         )
         acquisitions = database.setdefault(database_finger_tag, [])
-        acquisitions.append(fingerprint.acquisition)
+        acquisitions.append(fingerprint)
 
     for (database_finger_tag, acquisitions) in database.items():
         _root, *components, tag = database_finger_tag.split(os.path.sep)
@@ -80,7 +80,7 @@ f"""Error: wrong file format
         database_file_path = os.path.join(sub_dirs, tag)
 
         acquisitions_text = "acquisition" if len(acquisitions) == 1 else "acquisitions"
-        print(f"Info: saving `{database_file_path}` with {len(acquisitions)} {acquisitions_text} per fingerprint")
+        print(f"Info: saving `{database_file_path}{FINGERPRINTS_DATABASE_FILE_EXTENSION}` with {len(acquisitions)} {acquisitions_text} per fingerprint")
 
         numpy.save(
             database_file_path,

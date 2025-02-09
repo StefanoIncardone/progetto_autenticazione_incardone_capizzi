@@ -15,7 +15,25 @@ import html
 import base64
 import IPython.display
 
-from fingerprint import FE_CONFIG, FM_CONFIG, Bifurcation, BifurcationWithAngle, Bounds, Core, Delta, FingerprintFeatures, Minutia, MinutiaWithAngle, Point, PointWithAngle, Range, Singularity, Termination, TerminationWithAngle, Whorl, angles_abs_difference
+from fingerprint import (
+    FE_CONFIG,
+    FM_CONFIG,
+    Alignment,
+    Bifurcation,
+    BifurcationWithAngle,
+    Bounds,
+    Core,
+    Delta,
+    Fingerprint,
+    Minutia,
+    MinutiaWithAngle,
+    Point,
+    Range,
+    Singularity,
+    Termination,
+    TerminationWithAngle,
+    Whorl,
+)
 
 class ColorBGR(NamedTuple):
     b: int
@@ -32,9 +50,9 @@ U8_MAX = numpy.iinfo(u8).max
 RED   = ColorBGR(r = U8_MAX, g = 0,      b = 0)
 GREEN = ColorBGR(r = 0,      g = U8_MAX, b = 0)
 BLUE  = ColorBGR(r = 0,      g = 0,      b = U8_MAX)
+YELLOW   = ColorBGR(r = U8_MAX, g = U8_MAX,      b = 0)
 
 DIRECTIONAL_MAP_LINES_LENGTH_SCALE = FE_CONFIG.directional_map_block_length.value * 0.5
-DIRECTIONAL_MAP_LINES_COLOR = RED
 
 def int_slider(range: Range[int], description: str) -> ipywidgets.IntSlider:
     return ipywidgets.IntSlider(
@@ -78,7 +96,7 @@ def float_text(value: float, description: str) -> ipywidgets.FloatText:
     )
 
 def show(
-    *titles_and_images:     tuple[str, NDArray[Any]],
+    *titles_and_images: tuple[str, NDArray[Any]],
     enlarge_small_images: bool = True,
     max_images_per_row: int = -1,
     font_size: int = 0,
@@ -143,14 +161,15 @@ def convert_to_bgr_if_grayscale(image: NDArray[u8]) -> tuple[int, int, NDArray[u
         image_bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) # type: ignore
     else:
         image_rows, image_columns, *_image_channels = image.shape
-        image_bgr = image
+        image_bgr = image.copy()
     return (image_rows, image_columns, image_bgr)
 
 def draw_directional_map_lines(
     fingerprint: NDArray[u8],
     directional_map: NDArray[f32],
     segmentation_mask: NDArray[u8],
-    directional_map_block_length: int
+    directional_map_block_length: int,
+    color: ColorBGR,
 ) -> NDArray[u8]:
     fingerprint_rows, fingerprint_columns, fingerprint_with_directional_lines = convert_to_bgr_if_grayscale(fingerprint)
 
@@ -166,21 +185,17 @@ def draw_directional_map_lines(
                 continue
 
             direction = float(directional_map[center_row, center_column])
-            line_length_x = int(round(math.cos(direction) * DIRECTIONAL_MAP_LINES_LENGTH_SCALE))
-            line_length_y = int(round(-math.sin(direction) * DIRECTIONAL_MAP_LINES_LENGTH_SCALE))
+            line_length_x = round(math.cos(direction) * DIRECTIONAL_MAP_LINES_LENGTH_SCALE)
+            line_length_y = round(-math.sin(direction) * DIRECTIONAL_MAP_LINES_LENGTH_SCALE)
             _ = cv2.line(
                 fingerprint_with_directional_lines,
                 pt1 = (center_column - line_length_x, center_row - line_length_y),
                 pt2 = (center_column + line_length_x, center_row + line_length_y),
-                color = DIRECTIONAL_MAP_LINES_COLOR,
+                color = color,
                 thickness = 1,
                 lineType = cv2.LINE_AA
             )
     return fingerprint_with_directional_lines
-
-CORE_COLOR = RED
-WHORL_COLOR = GREEN
-DELTA_COLOR = BLUE
 
 CORE_RADIUS = 5
 WHORL_RADIUS = CORE_RADIUS
@@ -189,6 +204,9 @@ HALF_DELTA_BASE = HALF_DELTA_HEIGHT
 def draw_singularities(
     fingerprint: NDArray[u8],
     singularities: list[Singularity],
+    core_color: ColorBGR,
+    whorl_color: ColorBGR,
+    delta_color: ColorBGR,
 ) -> NDArray[u8]:
     _fingerprint_rows, _fingerprint_columns, fingerprint_with_singularities = convert_to_bgr_if_grayscale(fingerprint)
 
@@ -199,7 +217,7 @@ def draw_singularities(
                     fingerprint_with_singularities,
                     center = (singularity.column - CORE_RADIUS, singularity.row - CORE_RADIUS),
                     radius = CORE_RADIUS,
-                    color = CORE_COLOR,
+                    color = core_color,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
@@ -208,7 +226,7 @@ def draw_singularities(
                     fingerprint_with_singularities,
                     center = (singularity.column - WHORL_RADIUS, singularity.row - WHORL_RADIUS),
                     radius = WHORL_RADIUS,
-                    color = WHORL_COLOR,
+                    color = whorl_color,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
@@ -220,7 +238,7 @@ def draw_singularities(
                     fingerprint_with_singularities,
                     pt1 = (bottom_left_vertex.column - HALF_DELTA_BASE, bottom_left_vertex.row - HALF_DELTA_BASE),
                     pt2 = (bottom_right_vertex.column - HALF_DELTA_BASE, bottom_right_vertex.row - HALF_DELTA_BASE),
-                    color = DELTA_COLOR,
+                    color = delta_color,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
@@ -228,7 +246,7 @@ def draw_singularities(
                     fingerprint_with_singularities,
                     pt1 = (bottom_right_vertex.column - HALF_DELTA_BASE, bottom_right_vertex.row - HALF_DELTA_BASE),
                     pt2 = (top_vertex.column - HALF_DELTA_BASE, top_vertex.row - HALF_DELTA_BASE),
-                    color = DELTA_COLOR,
+                    color = delta_color,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
@@ -236,31 +254,30 @@ def draw_singularities(
                     fingerprint_with_singularities,
                     pt1 = (top_vertex.column - HALF_DELTA_BASE, top_vertex.row - HALF_DELTA_BASE),
                     pt2 = (bottom_left_vertex.column - HALF_DELTA_BASE, bottom_left_vertex.row - HALF_DELTA_BASE),
-                    color = DELTA_COLOR,
+                    color = delta_color,
                     thickness = 1,
                     lineType = cv2.LINE_AA
                 )
             case _: assert False, "unreachable"
     return fingerprint_with_singularities
 
-TERMINATION_COLOR = RED
-BIFURCATION_COLOR = BLUE
-
 def draw_minutiae(
     fingerprint: NDArray[u8],
     minutiae: list[Minutia],
+    termination_color: ColorBGR,
+    bifurcation_color: ColorBGR,
 ) -> NDArray[u8]:
     _fingerprint_rows, _fingerprint_columns, fingerprint_with_minutiae = convert_to_bgr_if_grayscale(fingerprint)
     for minutia in minutiae:
         minutia_color: ColorBGR
         match minutia:
-            case Termination(): minutia_color = TERMINATION_COLOR
-            case Bifurcation(): minutia_color = BIFURCATION_COLOR
+            case Termination(): minutia_color = termination_color
+            case Bifurcation(): minutia_color = bifurcation_color
             case _: assert False, "unreachable"
 
         _ = cv2.drawMarker(
             fingerprint_with_minutiae,
-            position = minutia,
+            position = (minutia.column, minutia.row),
             color = minutia_color,
             markerType = cv2.MARKER_CROSS,
             markerSize = 8
@@ -270,13 +287,15 @@ def draw_minutiae(
 def draw_minutiae_with_angle(
     fingerprint: NDArray[u8],
     minutiae: list[MinutiaWithAngle],
+    termination_color: ColorBGR,
+    bifurcation_color: ColorBGR,
 ) -> NDArray[u8]:
     _fingerprint_rows, _fingerprint_columns, fingerprint_with_minutiae = convert_to_bgr_if_grayscale(fingerprint)
     for minutia in minutiae:
         minutia_color: ColorBGR
         match minutia:
-            case TerminationWithAngle(): minutia_color = TERMINATION_COLOR
-            case BifurcationWithAngle(): minutia_color = BIFURCATION_COLOR
+            case TerminationWithAngle(): minutia_color = termination_color
+            case BifurcationWithAngle(): minutia_color = bifurcation_color
             case _: assert False, "unreachable"
 
         _ = cv2.circle(
@@ -288,8 +307,8 @@ def draw_minutiae_with_angle(
             lineType = cv2.LINE_AA
         )
 
-        direction_line_width = int(round(math.cos(minutia.angle) * 10))
-        direction_line_height = int(round(math.sin(minutia.angle) * 10))
+        direction_line_width = round(math.cos(minutia.angle) * 10)
+        direction_line_height = round(math.sin(minutia.angle) * 10)
         _ = cv2.line(
             fingerprint_with_minutiae,
             pt1 = (minutia.column, minutia.row),
@@ -300,10 +319,10 @@ def draw_minutiae_with_angle(
         )
     return fingerprint_with_minutiae
 
-def draw_minutiae_and_cylinder(
+def draw_mcc_cylinders(
     fingerprint: NDArray[u8],
-    features: FingerprintFeatures,
-    minutia_index: int
+    features: Fingerprint,
+    minutia_index: int,
 ) -> NDArray[u8]:
     def compute_actual_cylinder_coordinates(minutia: MinutiaWithAngle) -> NDArray[floating]:
         minutia_angle_cosines = math.cos(minutia.angle)
@@ -326,9 +345,9 @@ def draw_minutiae_and_cylinder(
         cilinder_center_row: float
         _ = cv2.circle(
             img = fingerprint_with_minutiae_and_cylinder,
-            center = (int(round(cilinder_center_column)), int(round(cilinder_center_row))),
+            center = (round(cilinder_center_column), round(cilinder_center_row)),
             radius = 3,
-            color = (0x80, int(round(local_structure_intensity * 0xff)), 0x80),
+            color = (0x80, round(local_structure_intensity * 0xff), 0x80),
             thickness = 1,
             lineType = cv2.LINE_AA,
         )
@@ -337,9 +356,9 @@ def draw_minutiae_and_cylinder(
 
 def draw_match_pairs(
     fingerprint_1: NDArray[u8],
-    features_1: FingerprintFeatures,
+    features_1: Fingerprint,
     fingerprint_2: NDArray[u8],
-    features_2: FingerprintFeatures,
+    features_2: Fingerprint,
     pairs: tuple[NDArray[i64], NDArray[i64]],
     matching_pair_index: int
 ) -> NDArray[u8]:
@@ -355,11 +374,11 @@ def draw_match_pairs(
     fingerprints_with_matching_local_structures[
         : fingerprint_1_rows,
         : fingerprint_1_columns
-    ] = draw_minutiae_and_cylinder(fingerprint_1, features_1, p1[matching_pair_index])
+    ] = draw_mcc_cylinders(fingerprint_1, features_1, p1[matching_pair_index])
     fingerprints_with_matching_local_structures[
         : fingerprint_2_rows,
         fingerprint_1_columns: fingerprint_1_columns + fingerprint_2_columns
-    ] = draw_minutiae_and_cylinder(fingerprint_2, features_2, p2[matching_pair_index])
+    ] = draw_mcc_cylinders(fingerprint_2, features_2, p2[matching_pair_index])
 
     for current_local_structure_index, (i1, i2) in enumerate(zip(p1, p2, strict = True)):
         i1: i64
@@ -379,10 +398,10 @@ def draw_match_pairs(
     return fingerprints_with_matching_local_structures
 
 def matching_score_local_structures_show_progress(
-    self: FingerprintFeatures,
-    other: FingerprintFeatures,
+    self: Fingerprint,
+    other: Fingerprint,
     self_image_path: str,
-    other_image_path: str
+    other_image_path: str,
 ) -> float:
     distances: NDArray[f64] = numpy.linalg.norm(
         self.local_structures[:, numpy.newaxis,:] - other.local_structures,
@@ -390,7 +409,7 @@ def matching_score_local_structures_show_progress(
     )
     distances /= numpy.linalg.norm(self.local_structures, axis = 1)[:, numpy.newaxis] + numpy.linalg.norm(other.local_structures, axis = 1)
     minutiae_matching_pairs: tuple[NDArray[i64], NDArray[i64]] = numpy.unravel_index(
-        numpy.argpartition(distances, FM_CONFIG.local_structures_matching_minutiae_pair_count, None)[: FM_CONFIG.local_structures_matching_minutiae_pair_count],
+        numpy.argpartition(distances, FM_CONFIG.local_structures_matching.pair_count, None)[: FM_CONFIG.local_structures_matching.pair_count],
         distances.shape
     ) # type: ignore
     matching_score = 1 - numpy.mean(distances[minutiae_matching_pairs[0], minutiae_matching_pairs[1]])
@@ -398,8 +417,18 @@ def matching_score_local_structures_show_progress(
     self_raw_fingerprint: NDArray[u8] = cv2.imread(self_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
     other_raw_fingerprint: NDArray[u8] = cv2.imread(other_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
 
-    self_with_minutiae = draw_minutiae_with_angle(self_raw_fingerprint, self.minutiae)
-    other_with_minutiae = draw_minutiae_with_angle(other_raw_fingerprint, other.minutiae)
+    self_with_minutiae = draw_minutiae_with_angle(
+        self_raw_fingerprint,
+        self.minutiae,
+        RED,
+        BLUE,
+    )
+    other_with_minutiae = draw_minutiae_with_angle(
+        other_raw_fingerprint,
+        other.minutiae,
+        RED,
+        BLUE,
+    )
 
     match_pairs_images: list[tuple[str, NDArray[u8]]] = []
     for i in range(len(minutiae_matching_pairs[0])):
@@ -418,119 +447,149 @@ def matching_score_local_structures_show_progress(
     show(*match_pairs_images)
     return float(matching_score)
 
-def matching_score_hough_show_progress(
-    self: FingerprintFeatures,
-    other: FingerprintFeatures,
-    self_image_path: str,
-    other_image_path: str
-) -> float:
-    def is_close(row_0: int, column_0: int, row_1: int, column_1: int, radius: int) -> bool:
-        return (column_0 - column_1) ** 2 + (row_0 - row_1) ** 2 <= radius ** 2
+def draw_matching_hough(
+    identity_fingerprint: Fingerprint,
+    template_fingerprint: Fingerprint,
+    matching_score: float,
+    aligned_minutiae: list[MinutiaWithAngle],
+    matched_minutiae: list[tuple[int, int]],
+    alignment: Alignment,
+    matching_score_threshold: float,
+    template_alpha: float,
+) -> NDArray[u8]:
+    identity_rows, identity_columns = identity_fingerprint.thinned_fingerprint.shape
+    template_rows, template_columns = template_fingerprint.thinned_fingerprint.shape
 
-    accumulator: dict[PointWithAngle, int] = {}
+    matching_hough = numpy.full((max(identity_rows,template_rows), identity_columns+template_columns, 3), 255, u8)
 
-    for other_minutia in other.minutiae:
-        for self_minutia in self.minutiae:
-            angles_difference = angles_abs_difference(self_minutia.angle, other_minutia.angle)
-            angles_difference_cos = math.cos(angles_difference)
-            angles_difference_sin = math.sin(angles_difference)
+    # rows, columns, aligned_fingerprint = convert_to_bgr_if_grayscale(identity_fingerprint.thinned_fingerprint)
+    # aligned_fingerprint[numpy.all(aligned_fingerprint == (255, 255, 255), axis=-1)] = GREEN
 
-            translation_column = other_minutia.column - (self_minutia.column * angles_difference_cos + self_minutia.row * angles_difference_sin)
-            translation_row = other_minutia.row - (self_minutia.column * angles_difference_sin - self_minutia.row * angles_difference_cos)
+    # assert alignment.scale > 0, f"`{alignment.scale = }` must be greater than 0"
 
-            translation_point = PointWithAngle(
-                column = int(round(translation_column)),
-                row = int(round(translation_row)),
-                angle = int(round(angles_difference))
-            )
-            if translation_point in accumulator:
-                accumulator[translation_point] += 1
-            else:
-                accumulator[translation_point] = 1
+    # # alignment.scale = 1.8
+    # if alignment.scale == 1:
+    #     pass # no scaling
+    # elif alignment.scale > 1:
+    #     aligned_columns = round(columns * alignment.scale)
+    #     aligned_rows = round(rows * alignment.scale)
+    #     aligned_fingerprint = cast(NDArray[u8], cv2.resize(
+    #         aligned_fingerprint,
+    #         dsize = (aligned_columns, aligned_rows),
+    #         interpolation = cv2.INTER_LINEAR,
+    #     ))
 
-    most_voted_translation: PointWithAngle = ... # type: ignore
-    max_votes = 0
-    for translation, votes in accumulator.items():
-        if votes > max_votes:
-            most_voted_translation = translation
-            max_votes = votes
+    #     columns_padding = aligned_columns - columns
+    #     rows_padding = aligned_rows - rows
+    #     top_padding = rows_padding // 2
+    #     bottom_padding = rows_padding - top_padding
+    #     left_padding = columns_padding // 2
+    #     right_padding = columns_padding - left_padding
 
-    rotation_angle_cos = math.cos(most_voted_translation.angle)
-    rotation_angle_sin = math.sin(most_voted_translation.angle)
-    rotation_matrix: NDArray[f64] = numpy.array([ # type: ignore
-        [rotation_angle_cos, -rotation_angle_sin],
-        [rotation_angle_sin, rotation_angle_cos],
-    ])
+    #     aligned_rows_start = top_padding
+    #     aligned_rows_end = aligned_rows - bottom_padding
+    #     aligned_columns_start = left_padding
+    #     aligned_columns_end = aligned_columns - right_padding
+    #     aligned_fingerprint = aligned_fingerprint[
+    #         aligned_rows_start: aligned_rows_end,
+    #         aligned_columns_start: aligned_columns_end,
+    #     ]
+    # else:
+    #     aligned_columns = round(columns * alignment.scale)
+    #     aligned_rows = round(rows * alignment.scale)
+    #     aligned_fingerprint = cast(NDArray[u8], cv2.resize(
+    #         aligned_fingerprint,
+    #         dsize = (aligned_columns, aligned_rows),
+    #         interpolation = cv2.INTER_LINEAR,
+    #     ))
 
-    # self_aligned_minutiae = (
-    #     numpy.array([(minutia.column, minutia.row) for minutia in self.minutiae], dtype = i64)
-    #     @ rotation_matrix + numpy.array([most_voted_translation.column, most_voted_translation.row], dtype = i64)
-    # ).round().astype(i64)
-    self_aligned_minutiae = (
-        numpy.array([(minutia.column, minutia.row) for minutia in self.minutiae], dtype = i64)
-            + numpy.array([most_voted_translation.column, most_voted_translation.row], dtype = i64)
-    ).round().astype(i64)
-    self_aligned_minutiae = [
-        Minutia(column = column, row = row) for column, row in self_aligned_minutiae
-    ]
+    #     columns_padding = columns - aligned_columns
+    #     rows_padding = rows - aligned_rows
+    #     top_padding = rows_padding // 2
+    #     bottom_padding = rows_padding - top_padding
+    #     left_padding = columns_padding // 2
+    #     right_padding = columns_padding - left_padding
 
-    self_raw_fingerprint: NDArray[u8] = cv2.imread(self_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
-    other_raw_fingerprint: NDArray[u8] = cv2.imread(other_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
+    #     aligned_fingerprint = cast(NDArray[u8], cv2.copyMakeBorder(
+    #         aligned_fingerprint,
+    #         top = top_padding,
+    #         bottom = bottom_padding,
+    #         left = left_padding,
+    #         right = right_padding,
+    #         borderType = cv2.BORDER_CONSTANT,
+    #     ))
 
-    self_raw_fingeprint_rows, self_raw_fingerprint_columns = self_raw_fingerprint.shape
-    other_raw_fingerprint_rows, other_raw_fingerprint_columns = other_raw_fingerprint.shape
-    res = numpy.empty(
-        shape = (max(self_raw_fingeprint_rows,other_raw_fingerprint_rows), self_raw_fingerprint_columns+other_raw_fingerprint_columns, 3),
-        dtype = u8
+    # rotation_angle_cos = math.cos(alignment.angle)
+    # rotation_angle_sin = math.sin(alignment.angle)
+    # alignment_matrix: NDArray[f64] = numpy.array([
+    #     [rotation_angle_cos, -rotation_angle_sin, alignment.column],
+    #     [rotation_angle_sin, rotation_angle_cos, alignment.row],
+    # ])
+
+    # aligned_fingerprint: NDArray[u8] = cv2.warpAffine(
+    #     aligned_fingerprint,
+    #     alignment_matrix,
+    #     identity_fingerprint.thinned_fingerprint.shape,
+    #     flags = cv2.INTER_LINEAR
+    # ) # type: ignore
+
+    matching_hough[:identity_rows,:identity_columns] = draw_minutiae_with_angle(
+        identity_fingerprint.thinned_fingerprint,
+        identity_fingerprint.minutiae,
+        termination_color = RED,
+        bifurcation_color = BLUE,
     )
-    res[
-        : self_raw_fingeprint_rows,
-        :self_raw_fingerprint_columns
-    ] = draw_minutiae_with_angle(
-        self_raw_fingerprint,
-        self.minutiae,
+    matching_hough[:template_rows,identity_columns:identity_columns+template_columns] = draw_minutiae_with_angle(
+        template_fingerprint.thinned_fingerprint,
+        template_fingerprint.minutiae,
+        termination_color = RED,
+        bifurcation_color = BLUE,
     )
-    res[
-        : other_raw_fingerprint_rows,
-        self_raw_fingerprint_columns: self_raw_fingerprint_columns + other_raw_fingerprint_columns
-    ] = draw_minutiae_with_angle(
-        other_raw_fingerprint,
-        other.minutiae,
+    matching_hough[:template_rows,identity_columns:identity_columns+template_columns] = draw_minutiae_with_angle(
+        matching_hough[:template_rows,identity_columns:identity_columns+template_columns],
+        aligned_minutiae,
+        termination_color = YELLOW,
+        bifurcation_color = GREEN,
     )
+    # aligned_fingerprint = draw_minutiae_with_angle(
+    #     aligned_fingerprint,
+    #     aligned_minutiae,
+    #     termination_color = GREEN,
+    #     bifurcation_color = GREEN,
+    # )
 
-    matching_minutiae_count = 0
-    for other_minutia in other.minutiae:
-        for self_minutia, self_aligned_minutia in zip(self.minutiae, self_aligned_minutiae, strict = True):
-            minutiae_are_close = is_close(
-                self_aligned_minutia.row,
-                self_aligned_minutia.column,
-                other_minutia.row,
-                other_minutia.column,
-                radius = FM_CONFIG.hough_matching_minutiae_pixels_distance_threshold
-            )
-            # minutiae_are_aligned = is_aligned(aligned_angle, other_minutia.angle)
+    # matching_hough[:template_rows,identity_columns:identity_columns+template_columns] = (
+    #     matching_hough[:template_rows,identity_columns:identity_columns+template_columns] * (1 - template_alpha) + aligned_fingerprint * template_alpha
+    # )
 
-            if minutiae_are_close:
-                _ = cv2.line(
-                    res,
-                    pt1 = (self_minutia.column, self_minutia.row),
-                    pt2 = (self_raw_fingerprint_columns + other_minutia.column, other_minutia.row),
-                    color = (0, 0, U8_MAX),
-                    thickness = 1,
-                    lineType = cv2.LINE_AA
-                )
+    for template_minutia_index, identity_minutia_index in matched_minutiae:
+        template_minutia = template_fingerprint.minutiae[template_minutia_index]
+        identity_minutia = identity_fingerprint.minutiae[identity_minutia_index]
+        _ = cv2.line(
+            matching_hough,
+            pt1 = (identity_minutia.column, identity_minutia.row),
+            pt2 = (identity_columns + template_minutia.column, template_minutia.row),
+            color = GREEN,
+            thickness = 1,
+            lineType = cv2.LINE_AA
+        )
 
-                matching_minutiae_count += 1
-                break
-
-    other_fingerprint_with_self_aligned_minutiae = draw_minutiae(
-        other_raw_fingerprint,
-        self_aligned_minutiae,
-    )
-    show(
-        ("both minutiae", res),
-        ("self aligned minutiae", other_fingerprint_with_self_aligned_minutiae),
-    )
-
-    matching_score = matching_minutiae_count / max(len(self.minutiae), len(other.minutiae))
-    return matching_score
+    if matching_score >= matching_score_threshold:
+        matching_hough: NDArray[u8] = cv2.rectangle(
+            matching_hough,
+            pt1 = (0, 0),
+            pt2 = (identity_columns - 1, identity_rows - 1),
+            color = GREEN,
+            thickness = 1,
+            lineType = cv2.LINE_AA,
+        ) # type: ignore
+    else:
+        matching_hough: NDArray[u8] = cv2.rectangle(
+            matching_hough,
+            pt1 = (0, 0),
+            pt2 = (identity_columns - 1, identity_rows - 1),
+            color = RED,
+            thickness = 1,
+            lineType = cv2.LINE_AA,
+        ) # type: ignore
+    return matching_hough
