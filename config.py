@@ -25,10 +25,10 @@ DIRECTIONAL_MAP_BLUR_FILTER_LENGTH = -1
 When set to -1 no blur filter will be applied
 """
 
-LOCAL_RIDGE_BLOCK_ROWS = 64
+LOCAL_RIDGE_BLOCK_ROWS = 96
 """Must be in the range [0, 256]"""
 
-LOCAL_RIDGE_BLOCK_COLUMNS = 64
+LOCAL_RIDGE_BLOCK_COLUMNS = 96
 """Must be in the range [0, 256]"""
 
 GABOR_FILTERS_COUNT = 8
@@ -64,20 +64,24 @@ MATCHING_SCORE_GENUINE_THRESHOLD = 0.5
 
 class MatchingAlgorithmKind(IntEnum):
     LocalStructures = 0
-    Hough = 1
+    HoughRatha = 1
+    HoughChouta = 2
 
-MATCHING_ALGORITHM = MatchingAlgorithmKind.Hough
+MATCHING_ALGORITHM = MatchingAlgorithmKind.HoughRatha
 
 LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 3
 
 HOUGH_MATCHING_PIXELS_DISTANCE_THRESHOLD = 25
 """Must be in the range [0, 255 * sqrt(2)]"""
 
-HOUGH_MATCHING_ANGLE_DISTANCE_THRESHOLD = 20
+HOUGH_MATCHING_ANGLE_DISTANCE_THRESHOLD = 25
 """Must be in the range [0, 180]"""
 
-HOUGH_MATCHING_ALIGMENT_ANGLE_FREEDOM = 4
+HOUGH_RATHA_MATCHING_ALIGNMENT_ANGLE_FREEDOM = 0
 """Must be in the range [0, 180]"""
 
-HOUGH_MATCHING_ALIGMENT_SCALE_FREEDOM = 4
+HOUGH_RATHA_MATCHING_ALIGNMENT_SCALE_FREEDOM = 0
+"""Must be in the range [0, 100]"""
+
+HOUGH_CHOUTA_MATCHING_ERR_FREEDOM = 0
 """Must be in the range [0, 100]"""

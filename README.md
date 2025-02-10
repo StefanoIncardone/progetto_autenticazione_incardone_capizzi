@@ -1,91 +1,88 @@
-# Progetto Autenticazione Biometrica Per La Sicurezza Dei Sistemi Informatici
+# Biometric Authentication for IT Systems Security project
 
-L'obiettivo del progetto è quello di sviluppare un sistema di riconoscimento multi-istanza
-automatico basato sulle impronte digitali, fornendo una stima quantitativa sulle performance di
-accuratezza.
+The aim of this project is to develop a multi-instance biometric fingerprint identification and
+verification system, with the goal of giving a quantitative performance and accuracy evaluation.
 
-## Requisiti di Sistema
+## System Requirements
 
-- Interprete Python versione 3.13
+- Python version 3.13
 
-## Struttura del progetto
+## Project's structure
 
-Il progetto si compone secondo la seguente struttura:
+### Features extraction
 
-### Estrazione delle features
+- [`config.py`](config.py): configuration parameters used during features extraction
+- [`fingerprint.py`](fingerprint.py): algorithms and structures used to extract features
+- [`references/`](references/): papers and documents used as references for the features
+    extraction process
 
-- [`config.py`](config.py): parametri di configurazione inerenti all'estrazione delle features
-- `fingerprint.py`: algoritmi e strutture utilizzati per estrarre le features
-- `references/`: cartella contenente tutt i riferimenti usati per l'estrazione delle features
+### Enrollment and database creation
 
-### Creazione database
-
-- `enrollment.py`: estrazione delle features di tutte le impronte contenute dentro
-    la cartella `datasets/` al fine di generare il database che verrà immagazzinato nella
-    cartella `database/`
-- `datasets/`: datasets utilizzati (FVC2006)
-    le etichette delle impronte sono organizzate nel seguente modo:
-
-    - `database full tag`: `datasets/FVC2006/db1_11/101_1`
-    - `full tag`: `FVC2006/db1_1/101_1`
-    - `database tag`: `FVC2006/db1_1/`
+- [`enrollment.py`](enrollment.py): features extraction of all the fingerprints in the folder
+    specified with the `DATASET_DIR_PATH` configuration key, to create the database folder
+    specified with the `DATABASE_DIR_PATH` configuration key
+- used datasets FVC2006, the filenames are structured in the following way:
+    - `database full tag`: `DATASET_DIR_PATH/FVC2006/db1_b/101_1`
+    - `full tag`: `FVC2006/db1_b/101_1`
+    - `database tag`: `FVC2006/db1_b/`
     - `finger tag`: `101`
     - `acquisition tag`: `1`
-    - `full finger tag`: `FVC2006/db1_1/101`
+    - `full finger tag`: `FVC2006/db1_b/101`
     - `fingerprint tag`: `101_1`
-- `database/`: databse in cui verranno immagazzinate le feature estratte dai datasets
 
-### Verifica e Identificazione
+### Identification and Verification
 
-- `verification.py`: modulo di verifica, che riceve un'identità dichiarata, e un'identita da
-    verificare, per verificare se l'impronta dichiarata è genuina o in impostore
-- `identification.py`: modulo di identifica, che riceve un'identità dichiarata, per identificarla
-    restituendo l'identità che rappresenta
+- [`identification.py`](identification.py), identification module:
+    get the declared identity as input in order to identify it and return the identity it represents
+- [`verification.py`](verification.py), verification module:
+    gets the declared identity as input and an expected identity to verify if the declared identity
+    is genuine or an impostor
 
-### Valutazione delle performance
+### Performance evaluation
 
-- `performance_evaluation.py`: script che effettua la valutazione delle performance inerenti
-    alle metriche di **FAR** ed **FRR**
+- [`performance_evaluation.py`](performance_evaluation.py): evaluates the performance of the
+    matching algorithm in order to measure it's **FAR** and **FRR** characteristics
 
-### Visualizzazione del progresso di estrazione e matching delle features
+### Interactive visualization of the features extraction and matching process
 
-- `features_extraction.py`:
+- [`interactive_visualization.ipynb`](interactive_visualization.ipynb): interactive notebook to
+    visualize in real time the features extraction and matching process
 
-## Utilizzo
+## Usage
 
-- **enrollment.py**:
+1. **enrollment.py**, creation of the database:
 
     ```shell
     python3.13 enrollment.py
     ```
 
-- **verification.py**:
-    - aiuto sulla modalità d'utilizzo:
+2. **verification.py**, verification of the declared identity:
+    - usage help:
 
         ```shell
         python3.13 verification.py --help
         ```
 
-    - verifica impronte:
+    - fingerprint verification:
 
         ```shell
         python3.13 verification.py FVC2006/db1_1/101_1 FVC2006/db1_1/101
         ```
 
-- **identification.py**:
-    - aiuto sulla modalità d'utilizzo:
+3. **identification.py**, identification of the declared identity:
+    - usage help:
 
         ```shell
         python3.13 identification.py --help
         ```
 
-    - identificazione impronte:
+    - fingeprint identification:
 
         ```shell
         python3.13 identification.py FVC2006/db1_1/101_1
         ```
 
-- **performance_evaluation.py**:
+4. **performance_evaluation.py**, **FAR** and **FRR** metrics performance evaluation
 
     ```shell
     python3.13 performance_evaluation.py

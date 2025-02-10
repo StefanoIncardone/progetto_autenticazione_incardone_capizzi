@@ -1,5 +1,3 @@
-# TODO(stefano): check https://github.com/gbnm2001/SIL775-fingerprint-matching
-
 from __future__ import annotations
 from copy import deepcopy
 from math import atan2, radians, cos, sin, degrees
@@ -35,8 +33,9 @@ from config import (
     GABOR_FILTERS_SIGMA,
     GRADIENT_MODULE_BLOCK_LENGTH,
     GRADIENT_SOBEL_FILTER_LENGTH,
-    HOUGH_MATCHING_ALIGMENT_ANGLE_FREEDOM,
-    HOUGH_MATCHING_ALIGMENT_SCALE_FREEDOM,
+    HOUGH_RATHA_MATCHING_ALIGNMENT_ANGLE_FREEDOM,
+    HOUGH_RATHA_MATCHING_ALIGNMENT_SCALE_FREEDOM,
+    HOUGH_CHOUTA_MATCHING_ERR_FREEDOM,
     HOUGH_MATCHING_ANGLE_DISTANCE_THRESHOLD,
     HOUGH_MATCHING_PIXELS_DISTANCE_THRESHOLD,
     LOCAL_STRUCTURES_MATCHING_PAIR_COUNT,
@@ -315,7 +314,7 @@ class LocalStructuresMatching:
     ) -> None:
         self.pair_count = pair_count
 
-class HoughMatching:
+class HoughMatchingRatha:
     __slots__ = (
         "pixels_distance_threshold",
         "angle_distance_threshold",
@@ -340,19 +339,42 @@ class HoughMatching:
         self.alignment_angle_freedom = alignment_angle_freedom
         self.alignment_scale_freedom = alignment_scale_freedom
 
-type MatchingAlgorithm = LocalStructuresMatching | HoughMatching
+class HoughMatchingChouta:
+    __slots__ = (
+        "pixels_distance_threshold",
+        "angle_distance_threshold",
+        "err_freedom",
+    )
+
+    pixels_distance_threshold: Range[int]
+    angle_distance_threshold: Range[int]
+    err_freedom: Range[int]
+
+    def __init__( # type: ignore
+        self,
+        pixels_distance_threshold: Range[int],
+        angle_distance_threshold: Range[int],
+        err_freedom: Range[int],
+    ) -> None:
+        self.pixels_distance_threshold = pixels_distance_threshold
+        self.angle_distance_threshold = angle_distance_threshold
+        self.err_freedom = err_freedom
+
+type MatchingAlgorithm = LocalStructuresMatching | HoughMatchingRatha | HoughMatchingChouta
 
 class FeaturesMatchingConfig:
     __slots__ = (
         "matching_score_genuine_threshold",
         "matching_algorithm",
         "local_structures_matching",
-        "hough_matching",
+        "hough_ratha_matching",
+        "hough_chouta_matching",
     )
 
     matching_score_genuine_threshold: Range[float]
     local_structures_matching: LocalStructuresMatching
-    hough_matching: HoughMatching
+    hough_ratha_matching: HoughMatchingRatha
+    hough_chouta_matching: HoughMatchingChouta
     matching_algorithm: MatchingAlgorithm
 
     def __init__( # type: ignore
@@ -363,13 +385,17 @@ class FeaturesMatchingConfig:
         local_structures_matching_pair_count: Any = LOCAL_STRUCTURES_MATCHING_PAIR_COUNT,
         hough_matching_pixels_distance_threshold: Any = HOUGH_MATCHING_PIXELS_DISTANCE_THRESHOLD,
         hough_matching_angle_distance_threshold: Any = HOUGH_MATCHING_ANGLE_DISTANCE_THRESHOLD,
-        hough_matching_alignment_angle_freedom: Any = HOUGH_MATCHING_ALIGMENT_ANGLE_FREEDOM,
-        hough_matching_alignment_scale_freedom: Any = HOUGH_MATCHING_ALIGMENT_SCALE_FREEDOM,
+        hough_ratha_matching_alignment_angle_freedom: Any = HOUGH_RATHA_MATCHING_ALIGNMENT_ANGLE_FREEDOM,
+        hough_ratha_matching_alignment_scale_freedom: Any = HOUGH_RATHA_MATCHING_ALIGNMENT_SCALE_FREEDOM,
+        hough_chouta_matching_err_freedom: Any = HOUGH_CHOUTA_MATCHING_ERR_FREEDOM,
     ) -> None:
         _ = assert_type(matching_score_genuine_threshold, float)
         _ = assert_type(matching_algorithm, MatchingAlgorithmKind)
         _ = assert_type(local_structures_matching_pair_count, int)
         _ = assert_type(hough_matching_pixels_distance_threshold, int)
+        _ = assert_type(hough_ratha_matching_alignment_angle_freedom, int)
+        _ = assert_type(hough_ratha_matching_alignment_scale_freedom, int)
+        _ = assert_type(hough_chouta_matching_err_freedom, int)
 
         if local_structures_matching_pair_count < 0:
             raise ValueError("local_structures_matching_pair_count must be positive")
@@ -384,7 +410,7 @@ class FeaturesMatchingConfig:
             value = matching_score_genuine_threshold,
         )
         self.local_structures_matching = LocalStructuresMatching(local_structures_matching_pair_count)
-        self.hough_matching = HoughMatching(
+        self.hough_ratha_matching = HoughMatchingRatha(
             pixels_distance_threshold = Range[int].new(
                 min = 0,
                 max = int(round(U8_MAX * (2 ** 0.5))),
@@ -401,20 +427,42 @@ class FeaturesMatchingConfig:
                 min = 0,
                 max = 180,
                 step = 1,
-                value = hough_matching_alignment_angle_freedom,
+                value = hough_ratha_matching_alignment_angle_freedom,
             ),
             alignment_scale_freedom = Range[int].new(
                 min = 0,
                 max = 100,
                 step = 1,
-                value = hough_matching_alignment_scale_freedom,
+                value = hough_ratha_matching_alignment_scale_freedom,
+            ),
+        )
+        self.hough_chouta_matching = HoughMatchingChouta(
+            pixels_distance_threshold = Range[int].new(
+                min = 0,
+                max = int(round(U8_MAX * (2 ** 0.5))),
+                step = 1,
+                value = hough_matching_pixels_distance_threshold,
+            ),
+            angle_distance_threshold = Range[int].new(
+                min = 0,
+                max = 180,
+                step = 1,
+                value = hough_matching_angle_distance_threshold,
+            ),
+            err_freedom = Range[int].new(
+                min = 0,
+                max = 100,
+                step = 1,
+                value = hough_chouta_matching_err_freedom,
             ),
         )
         match matching_algorithm:
             case MatchingAlgorithmKind.LocalStructures:
                 self.matching_algorithm = self.local_structures_matching
-            case MatchingAlgorithmKind.Hough:
-                self.matching_algorithm = self.hough_matching
+            case MatchingAlgorithmKind.HoughRatha:
+                self.matching_algorithm = self.hough_ratha_matching
+            case MatchingAlgorithmKind.HoughChouta:
+                self.matching_algorithm = self.hough_chouta_matching
             case _:
                 assert False, "unreachable"
 
@@ -1405,11 +1453,11 @@ class Fingerprint:
         return matching_score
 
     @staticmethod
-    def hough_alignment_parameters(
+    def hough_alignment_parameters_ratha(
         identity_minutiae: list[MinutiaWithAngle],
         template_minutiae: list[MinutiaWithAngle],
-        alignment_scale_freedom: int,
         alignment_angle_freedom: int,
+        alignment_scale_freedom: int,
     ) -> Alignment:
         scale_start = 100 - alignment_scale_freedom
         scale_end = 100 + alignment_scale_freedom + 1
@@ -1441,10 +1489,43 @@ class Fingerprint:
                         votes = accumulator.setdefault(alignment, 0)
                         accumulator[alignment] += 1
                         if votes + 1 > max_votes:
-                            max_votes = votes
+                            max_votes = votes + 1
                             most_voted_alignment = alignment
 
         return Alignment(*most_voted_alignment)
+
+    @staticmethod
+    def hough_alignment_parameters_chouta(
+        identity_minutiae: list[MinutiaWithAngle],
+        template_minutiae: list[MinutiaWithAngle],
+        err_freedom: int,
+    ) -> Alignment:
+        most_voted_alignment = (0, 0, 0)
+        max_votes = 0
+
+        accumulator: dict[tuple[int, int, int], int] = {}
+        for identity_minutia in identity_minutiae:
+            for template_minutia in template_minutiae:
+                alignment_angle_radians = angles_abs_difference_radians(template_minutia.angle, identity_minutia.angle)
+                alignment_angle = round(degrees(alignment_angle_radians))
+
+                alignment_angle_cos = cos(alignment_angle_radians)
+                alignment_angle_sin = sin(alignment_angle_radians)
+
+                alignment_column = template_minutia.column - round(alignment_angle_cos * identity_minutia.column - alignment_angle_sin * identity_minutia.row)
+                alignment_row = template_minutia.row - round(alignment_angle_sin * identity_minutia.column + alignment_angle_cos * identity_minutia.row)
+
+                for alignment_angle in range(alignment_angle - err_freedom, alignment_angle + err_freedom + 1):
+                    for column in range(alignment_column - err_freedom, alignment_column + err_freedom + 1):
+                        for row in range(alignment_row - err_freedom, alignment_row + err_freedom + 1):
+                            alignment = column, row, alignment_angle
+                            votes = accumulator.setdefault(alignment, 0)
+                            accumulator[alignment] += 1
+                            if votes + 1 > max_votes:
+                                max_votes = votes + 1
+                                most_voted_alignment = alignment
+
+        return Alignment(*most_voted_alignment, 1)
 
     @staticmethod
     def align_minutiae_hough(
@@ -1502,7 +1583,7 @@ class Fingerprint:
         return round(matching_score, ndigits = 2), matched_minutiae
 
     @staticmethod
-    def matching_score_hough(
+    def matching_score_hough_ratha(
         identity_minutiae: list[MinutiaWithAngle],
         template_minutiae: list[MinutiaWithAngle],
         pixels_distance_threshold: int,
@@ -1510,11 +1591,36 @@ class Fingerprint:
         alignment_angle_freedom: int,
         alignment_scale_freedom: int,
     ) -> tuple[float, list[MinutiaWithAngle], list[tuple[int, int]], Alignment]:
-        alignment = Fingerprint.hough_alignment_parameters(
+        alignment = Fingerprint.hough_alignment_parameters_ratha(
             identity_minutiae,
             template_minutiae,
             alignment_angle_freedom,
             alignment_scale_freedom,
+        )
+        aligned_minutiae = Fingerprint.align_minutiae_hough(
+            identity_minutiae,
+            alignment = alignment,
+        )
+        matching_score, matched_minutiae = Fingerprint.match_minutiae(
+            aligned_minutiae,
+            template_minutiae,
+            pixels_distance_threshold,
+            angle_distance_threshold,
+        )
+        return matching_score, aligned_minutiae, matched_minutiae, alignment
+
+    @staticmethod
+    def matching_score_hough_chouta(
+        identity_minutiae: list[MinutiaWithAngle],
+        template_minutiae: list[MinutiaWithAngle],
+        pixels_distance_threshold: int,
+        angle_distance_threshold: int,
+        err_freedom: int,
+    ) -> tuple[float, list[MinutiaWithAngle], list[tuple[int, int]], Alignment]:
+        alignment = Fingerprint.hough_alignment_parameters_chouta(
+            identity_minutiae,
+            template_minutiae,
+            err_freedom,
         )
         aligned_minutiae = Fingerprint.align_minutiae_hough(
             identity_minutiae,
@@ -1537,13 +1643,21 @@ class Fingerprint:
         match matching_algorithm:
             case LocalStructuresMatching():
                 matching_score_value = self.matching_score_local_structures(template, matching_algorithm.pair_count)
-            case HoughMatching():
-                matching_score_value, *_ = Fingerprint.matching_score_hough(
+            case HoughMatchingRatha():
+                matching_score_value, *_ = Fingerprint.matching_score_hough_ratha(
                     self.minutiae,
                     template.minutiae,
                     matching_algorithm.pixels_distance_threshold.value,
                     matching_algorithm.angle_distance_threshold.value,
                     matching_algorithm.alignment_angle_freedom.value,
                     matching_algorithm.alignment_scale_freedom.value,
+                )
+            case HoughMatchingChouta():
+                matching_score_value, *_ = Fingerprint.matching_score_hough_chouta(
+                    self.minutiae,
+                    template.minutiae,
+                    matching_algorithm.pixels_distance_threshold.value,
+                    matching_algorithm.angle_distance_threshold.value,
+                    matching_algorithm.err_freedom.value,
                 )
         return matching_score_value

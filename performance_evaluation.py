@@ -102,15 +102,15 @@ f"""Warning: ignoring file `{database_file_path}`, wrong file extension
     if (real_rejections_count := false_positives + true_negatives) == 0:
         far = float("nan")
     else:
-        far = false_positives * 100 / real_rejections_count
+        far = round(false_positives * 100 / real_rejections_count, ndigits = 1)
 
     frr: float
     if (real_acceptions_count := false_negatives + true_positives) == 0:
         frr = float("nan")
     else:
-        frr = false_negatives * 100 / real_acceptions_count
+        frr = round(false_negatives * 100 / real_acceptions_count, ndigits = 1)
 
-    print(f"Result: FAR = {far}, FRR = {frr}")
+    print(f"Result: FAR = {far}%, FRR = {frr}%")
 
     return ExitCode.Success
 
