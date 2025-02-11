@@ -2,7 +2,7 @@ import ipywidgets # type: ignore
 import numpy
 import math
 import cv2
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 from numpy.typing import NDArray
 from numpy import (
     int64 as i64,
@@ -17,7 +17,6 @@ import IPython.display
 
 from fingerprint import (
     FE_CONFIG,
-    FM_CONFIG,
     Alignment,
     Bifurcation,
     BifurcationWithAngle,
@@ -338,8 +337,13 @@ def draw_mcc_cylinders(
 
     _fingerprint_rows, _fingerprint_columns, fingerprint_with_minutiae_and_cylinder = convert_to_bgr_if_grayscale(fingerprint)
     minutia = features.minutiae[minutia_index]
+    cilinders = compute_actual_cylinder_coordinates(minutia)
     local_structure: NDArray[f64] = features.local_structures[minutia_index]
-    for local_structure_intensity, (cilinder_center_column, cilinder_center_row) in zip(local_structure, compute_actual_cylinder_coordinates(minutia), strict = True):
+    for local_structure_intensity, (cilinder_center_column, cilinder_center_row) in zip(
+        local_structure,
+        cilinders,
+        strict = True
+    ):
         local_structure_intensity: f64
         cilinder_center_column: float
         cilinder_center_row: float
@@ -355,97 +359,50 @@ def draw_mcc_cylinders(
     return fingerprint_with_minutiae_and_cylinder
 
 def draw_match_pairs(
+    fingerprint_0: NDArray[u8],
+    features_0: Fingerprint,
     fingerprint_1: NDArray[u8],
     features_1: Fingerprint,
-    fingerprint_2: NDArray[u8],
-    features_2: Fingerprint,
-    pairs: tuple[NDArray[i64], NDArray[i64]],
-    matching_pair_index: int
+    matching_pairs: tuple[NDArray[i64], NDArray[i64]],
+    matching_pair_index: int,
 ) -> NDArray[u8]:
+    fingerprint_0_rows, fingerprint_0_columns, fingerprint_0 = convert_to_bgr_if_grayscale(fingerprint_0)
     fingerprint_1_rows, fingerprint_1_columns, fingerprint_1 = convert_to_bgr_if_grayscale(fingerprint_1)
-    fingerprint_2_rows, fingerprint_2_columns, fingerprint_2 = convert_to_bgr_if_grayscale(fingerprint_2)
 
-    p1, p2 = pairs
     fingerprints_with_matching_local_structures = numpy.full(
-        shape = (max(fingerprint_1_rows,fingerprint_2_rows), fingerprint_1_columns + fingerprint_2_columns, 3),
+        shape = (max(fingerprint_0_rows,fingerprint_1_rows), fingerprint_0_columns + fingerprint_1_columns, 3),
         fill_value = 255,
         dtype = u8
     )
+
+    matching_pair_0, matching_pair_1 = matching_pairs
+    fingerprints_with_matching_local_structures[
+        : fingerprint_0_rows,
+        : fingerprint_0_columns
+    ] = draw_mcc_cylinders(fingerprint_0, features_0, matching_pair_0[matching_pair_index])
     fingerprints_with_matching_local_structures[
         : fingerprint_1_rows,
-        : fingerprint_1_columns
-    ] = draw_mcc_cylinders(fingerprint_1, features_1, p1[matching_pair_index])
-    fingerprints_with_matching_local_structures[
-        : fingerprint_2_rows,
-        fingerprint_1_columns: fingerprint_1_columns + fingerprint_2_columns
-    ] = draw_mcc_cylinders(fingerprint_2, features_2, p2[matching_pair_index])
+        fingerprint_0_columns: fingerprint_0_columns + fingerprint_1_columns
+    ] = draw_mcc_cylinders(fingerprint_1, features_1, matching_pair_1[matching_pair_index])
 
-    for current_local_structure_index, (i1, i2) in enumerate(zip(p1, p2, strict = True)):
+    for current_local_structure_index, (i1, i2) in enumerate(zip(
+        matching_pair_0, matching_pair_1, strict = True
+    )):
         i1: i64
         i2: i64
-        minutiae_1_i1 = features_1.minutiae[i1]
-        minutiae_2_i2 = features_2.minutiae[i2]
+        minutiae_1_i1 = features_0.minutiae[i1]
+        minutiae_2_i2 = features_1.minutiae[i2]
         if current_local_structure_index == matching_pair_index:
             _ = cv2.line(
                 fingerprints_with_matching_local_structures,
                 pt1 = (minutiae_1_i1.column, minutiae_1_i1.row),
-                pt2 = (fingerprint_1_columns+minutiae_2_i2.column, minutiae_2_i2.row),
+                pt2 = (fingerprint_0_columns+minutiae_2_i2.column, minutiae_2_i2.row),
                 color = GREEN,
                 thickness = 1,
                 lineType = cv2.LINE_AA
             )
 
     return fingerprints_with_matching_local_structures
-
-def matching_score_local_structures_show_progress(
-    self: Fingerprint,
-    other: Fingerprint,
-    self_image_path: str,
-    other_image_path: str,
-) -> float:
-    distances: NDArray[f64] = numpy.linalg.norm(
-        self.local_structures[:, numpy.newaxis,:] - other.local_structures,
-        axis = -1
-    )
-    distances /= numpy.linalg.norm(self.local_structures, axis = 1)[:, numpy.newaxis] + numpy.linalg.norm(other.local_structures, axis = 1)
-    minutiae_matching_pairs: tuple[NDArray[i64], NDArray[i64]] = numpy.unravel_index(
-        numpy.argpartition(distances, FM_CONFIG.local_structures_matching.pair_count, None)[: FM_CONFIG.local_structures_matching.pair_count],
-        distances.shape
-    ) # type: ignore
-    matching_score = 1 - numpy.mean(distances[minutiae_matching_pairs[0], minutiae_matching_pairs[1]])
-
-    self_raw_fingerprint: NDArray[u8] = cv2.imread(self_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
-    other_raw_fingerprint: NDArray[u8] = cv2.imread(other_image_path, flags = cv2.IMREAD_GRAYSCALE) # type: ignore
-
-    self_with_minutiae = draw_minutiae_with_angle(
-        self_raw_fingerprint,
-        self.minutiae,
-        RED,
-        BLUE,
-    )
-    other_with_minutiae = draw_minutiae_with_angle(
-        other_raw_fingerprint,
-        other.minutiae,
-        RED,
-        BLUE,
-    )
-
-    match_pairs_images: list[tuple[str, NDArray[u8]]] = []
-    for i in range(len(minutiae_matching_pairs[0])):
-        match_pairs = draw_match_pairs(
-            self_with_minutiae.copy(),
-            self,
-            other_with_minutiae.copy(),
-            other,
-            minutiae_matching_pairs,
-            i,
-        )
-
-        match_pair_name = f"match pair {i}"
-        match_pairs_images.append((match_pair_name, match_pairs))
-
-    show(*match_pairs_images)
-    return float(matching_score)
 
 def draw_matching_hough(
     identity_fingerprint: Fingerprint,
@@ -457,81 +414,83 @@ def draw_matching_hough(
     matching_score_threshold: float,
     template_alpha: float,
 ) -> NDArray[u8]:
+    scale = alignment.scale / 100
+    angle = math.radians(alignment.angle)
+
     identity_rows, identity_columns = identity_fingerprint.thinned_fingerprint.shape
     template_rows, template_columns = template_fingerprint.thinned_fingerprint.shape
 
     matching_hough = numpy.full((max(identity_rows,template_rows), identity_columns+template_columns, 3), 255, u8)
 
-    # rows, columns, aligned_fingerprint = convert_to_bgr_if_grayscale(identity_fingerprint.thinned_fingerprint)
-    # aligned_fingerprint[numpy.all(aligned_fingerprint == (255, 255, 255), axis=-1)] = GREEN
+    rows, columns, aligned_fingerprint = convert_to_bgr_if_grayscale(identity_fingerprint.thinned_fingerprint)
+    aligned_fingerprint[numpy.all(aligned_fingerprint == (255, 255, 255), axis=-1)] = GREEN
 
-    # assert alignment.scale > 0, f"`{alignment.scale = }` must be greater than 0"
+    assert scale > 0, f"`{scale = }` must be greater than 0"
 
-    # # alignment.scale = 1.8
-    # if alignment.scale == 1:
-    #     pass # no scaling
-    # elif alignment.scale > 1:
-    #     aligned_columns = round(columns * alignment.scale)
-    #     aligned_rows = round(rows * alignment.scale)
-    #     aligned_fingerprint = cast(NDArray[u8], cv2.resize(
-    #         aligned_fingerprint,
-    #         dsize = (aligned_columns, aligned_rows),
-    #         interpolation = cv2.INTER_LINEAR,
-    #     ))
+    if scale == 1:
+        pass # no scaling
+    elif scale > 1:
+        aligned_columns = round(columns * scale)
+        aligned_rows = round(rows * scale)
+        aligned_fingerprint = cast(NDArray[u8], cv2.resize(
+            aligned_fingerprint,
+            dsize = (aligned_columns, aligned_rows),
+            interpolation = cv2.INTER_LINEAR,
+        ))
 
-    #     columns_padding = aligned_columns - columns
-    #     rows_padding = aligned_rows - rows
-    #     top_padding = rows_padding // 2
-    #     bottom_padding = rows_padding - top_padding
-    #     left_padding = columns_padding // 2
-    #     right_padding = columns_padding - left_padding
+        columns_padding = aligned_columns - columns
+        rows_padding = aligned_rows - rows
+        top_padding = rows_padding // 2
+        bottom_padding = rows_padding - top_padding
+        left_padding = columns_padding // 2
+        right_padding = columns_padding - left_padding
 
-    #     aligned_rows_start = top_padding
-    #     aligned_rows_end = aligned_rows - bottom_padding
-    #     aligned_columns_start = left_padding
-    #     aligned_columns_end = aligned_columns - right_padding
-    #     aligned_fingerprint = aligned_fingerprint[
-    #         aligned_rows_start: aligned_rows_end,
-    #         aligned_columns_start: aligned_columns_end,
-    #     ]
-    # else:
-    #     aligned_columns = round(columns * alignment.scale)
-    #     aligned_rows = round(rows * alignment.scale)
-    #     aligned_fingerprint = cast(NDArray[u8], cv2.resize(
-    #         aligned_fingerprint,
-    #         dsize = (aligned_columns, aligned_rows),
-    #         interpolation = cv2.INTER_LINEAR,
-    #     ))
+        aligned_rows_start = top_padding
+        aligned_rows_end = aligned_rows - bottom_padding
+        aligned_columns_start = left_padding
+        aligned_columns_end = aligned_columns - right_padding
+        aligned_fingerprint = aligned_fingerprint[
+            aligned_rows_start: aligned_rows_end,
+            aligned_columns_start: aligned_columns_end,
+        ]
+    else:
+        aligned_columns = round(columns * scale)
+        aligned_rows = round(rows * scale)
+        aligned_fingerprint = cast(NDArray[u8], cv2.resize(
+            aligned_fingerprint,
+            dsize = (aligned_columns, aligned_rows),
+            interpolation = cv2.INTER_LINEAR,
+        ))
 
-    #     columns_padding = columns - aligned_columns
-    #     rows_padding = rows - aligned_rows
-    #     top_padding = rows_padding // 2
-    #     bottom_padding = rows_padding - top_padding
-    #     left_padding = columns_padding // 2
-    #     right_padding = columns_padding - left_padding
+        columns_padding = columns - aligned_columns
+        rows_padding = rows - aligned_rows
+        top_padding = rows_padding // 2
+        bottom_padding = rows_padding - top_padding
+        left_padding = columns_padding // 2
+        right_padding = columns_padding - left_padding
 
-    #     aligned_fingerprint = cast(NDArray[u8], cv2.copyMakeBorder(
-    #         aligned_fingerprint,
-    #         top = top_padding,
-    #         bottom = bottom_padding,
-    #         left = left_padding,
-    #         right = right_padding,
-    #         borderType = cv2.BORDER_CONSTANT,
-    #     ))
+        aligned_fingerprint = cast(NDArray[u8], cv2.copyMakeBorder(
+            aligned_fingerprint,
+            top = top_padding,
+            bottom = bottom_padding,
+            left = left_padding,
+            right = right_padding,
+            borderType = cv2.BORDER_CONSTANT,
+        ))
 
-    # rotation_angle_cos = math.cos(alignment.angle)
-    # rotation_angle_sin = math.sin(alignment.angle)
-    # alignment_matrix: NDArray[f64] = numpy.array([
-    #     [rotation_angle_cos, -rotation_angle_sin, alignment.column],
-    #     [rotation_angle_sin, rotation_angle_cos, alignment.row],
-    # ])
+    rotation_angle_cos = math.cos(angle)
+    rotation_angle_sin = math.sin(angle)
+    alignment_matrix: NDArray[f64] = numpy.array([
+        [rotation_angle_cos, -rotation_angle_sin, alignment.column],
+        [rotation_angle_sin, rotation_angle_cos, alignment.row],
+    ])
 
-    # aligned_fingerprint: NDArray[u8] = cv2.warpAffine(
-    #     aligned_fingerprint,
-    #     alignment_matrix,
-    #     identity_fingerprint.thinned_fingerprint.shape,
-    #     flags = cv2.INTER_LINEAR
-    # ) # type: ignore
+    aligned_fingerprint: NDArray[u8] = cv2.warpAffine(
+        aligned_fingerprint,
+        alignment_matrix,
+        identity_fingerprint.thinned_fingerprint.shape,
+        flags = cv2.INTER_LINEAR
+    ) # type: ignore
 
     matching_hough[:identity_rows,:identity_columns] = draw_minutiae_with_angle(
         identity_fingerprint.thinned_fingerprint,
@@ -551,16 +510,16 @@ def draw_matching_hough(
         termination_color = YELLOW,
         bifurcation_color = GREEN,
     )
-    # aligned_fingerprint = draw_minutiae_with_angle(
-    #     aligned_fingerprint,
-    #     aligned_minutiae,
-    #     termination_color = GREEN,
-    #     bifurcation_color = GREEN,
-    # )
+    aligned_fingerprint = draw_minutiae_with_angle(
+        aligned_fingerprint,
+        aligned_minutiae,
+        termination_color = GREEN,
+        bifurcation_color = GREEN,
+    )
 
-    # matching_hough[:template_rows,identity_columns:identity_columns+template_columns] = (
-    #     matching_hough[:template_rows,identity_columns:identity_columns+template_columns] * (1 - template_alpha) + aligned_fingerprint * template_alpha
-    # )
+    matching_hough[:template_rows,identity_columns:identity_columns+template_columns] = (
+        matching_hough[:template_rows,identity_columns:identity_columns+template_columns] * (1 - template_alpha) + aligned_fingerprint * template_alpha
+    )
 
     for template_minutia_index, identity_minutia_index in matched_minutiae:
         template_minutia = template_fingerprint.minutiae[template_minutia_index]

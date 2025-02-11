@@ -54,8 +54,8 @@ f"""Error: wrong file format
             acquisition_tags.append(acquisition_tag)
 
     mcc_reference_cell_coordinates = MccReferenceCellCoordinates(
-        FE_CONFIG.mcc_total_radius,
-        FE_CONFIG.mcc_circles_radius,
+        FE_CONFIG.mcc_radius,
+        FE_CONFIG.mcc_density,
     )
     database: DatabaseEnrollment = {}
     for fingerprint_file_path, acquisition_tag, database_finger_tag in zip(

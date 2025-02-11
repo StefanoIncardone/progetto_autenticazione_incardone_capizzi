@@ -43,11 +43,11 @@ from config import (
     LOCAL_RIDGE_BLOCK_COLUMNS,
     LOCAL_RIDGE_BLOCK_ROWS,
     MATCHING_SCORE_GENUINE_THRESHOLD,
-    MCC_CIRCLES_DENSITY,
+    MCC_DENSITY,
     MCC_GAUSSIAN_STD,
     MCC_SIGMOID_MU,
     MCC_SIGMOID_TAU,
-    MCC_TOTAL_RADIUS,
+    MCC_RADIUS,
     MINUTIAE_MIN_DISTANCE_FROM_BORDER,
     MINUTIAE_FOLLOWED_LENGTH_MAX,
     MINUTIAE_FOLLOWED_LENGTH_MIN,
@@ -126,8 +126,8 @@ class FeaturesExtractionConfig:
         "minutiae_min_distance_from_border",
         "minutiae_followed_length",
 
-        "mcc_total_radius",
-        "mcc_circles_radius",
+        "mcc_radius",
+        "mcc_density",
         "mcc_gaussian_std",
         "mcc_sigmoid_tau",
         "mcc_sigmoid_mu",
@@ -152,8 +152,8 @@ class FeaturesExtractionConfig:
     minutiae_min_distance_from_border: Range[int]
     minutiae_followed_length: Bounds[int]
 
-    mcc_total_radius: int
-    mcc_circles_radius: int
+    mcc_radius: int
+    mcc_density: int
     mcc_gaussian_std: float
     mcc_sigmoid_tau: float
     mcc_sigmoid_mu: float
@@ -176,8 +176,8 @@ class FeaturesExtractionConfig:
         minutiae_min_distance_from_border: Any = MINUTIAE_MIN_DISTANCE_FROM_BORDER,
         minutiae_followed_length_min: Any = MINUTIAE_FOLLOWED_LENGTH_MIN,
         minutiae_followed_length_max: Any = MINUTIAE_FOLLOWED_LENGTH_MAX,
-        mcc_total_radius: Any = MCC_TOTAL_RADIUS,
-        mcc_circles_density: Any = MCC_CIRCLES_DENSITY,
+        mcc_radius: Any = MCC_RADIUS,
+        mcc_density: Any = MCC_DENSITY,
         mcc_gaussian_std: Any = MCC_GAUSSIAN_STD,
         mcc_sigmoid_tau: Any = MCC_SIGMOID_TAU,
         mcc_sigmoid_mu: Any = MCC_SIGMOID_MU,
@@ -197,8 +197,8 @@ class FeaturesExtractionConfig:
         _ = assert_type(minutiae_min_distance_from_border, int)
         _ = assert_type(minutiae_followed_length_min, int)
         _ = assert_type(minutiae_followed_length_max, int)
-        _ = assert_type(mcc_total_radius, int)
-        _ = assert_type(mcc_circles_density, int)
+        _ = assert_type(mcc_radius, int)
+        _ = assert_type(mcc_density, int)
         _ = assert_type(mcc_gaussian_std, float)
         _ = assert_type(mcc_sigmoid_tau, float)
         _ = assert_type(mcc_sigmoid_mu, float)
@@ -294,8 +294,8 @@ class FeaturesExtractionConfig:
             step = 1,
         )
 
-        self.mcc_total_radius = mcc_total_radius
-        self.mcc_circles_radius = mcc_circles_density
+        self.mcc_radius = mcc_radius
+        self.mcc_density = mcc_density
         self.mcc_gaussian_std = mcc_gaussian_std
         self.mcc_sigmoid_tau = mcc_sigmoid_tau
         self.mcc_sigmoid_mu = mcc_sigmoid_mu
@@ -1159,82 +1159,48 @@ class Fingerprint:
         # POINCARÈ INDEX AND SINGULARITIES
         self.singularities = []
 
-        # half_directional_map_block_length = directional_map_block_length // 2
-        # block_start = directional_map_block_length + half_directional_map_block_length - 1
-        # block_row_end = fingerprint_rows - directional_map_block_length
-        # block_column_end = fingerprint_columns - directional_map_block_length
-        # for block_row in range(block_start, block_row_end, directional_map_block_length):
-        #     for block_column in range(block_start, block_column_end, directional_map_block_length):
-        #         if self.segmentation_mask_distance_map[block_row, block_column] <= singularities_min_distance_from_border:
-        #             continue
+        half_directional_map_block_length = directional_map_block_length // 2
+        block_start = directional_map_block_length + half_directional_map_block_length - 1
+        block_row_end = fingerprint_rows - directional_map_block_length
+        block_column_end = fingerprint_columns - directional_map_block_length
+        for block_row in range(block_start, block_row_end, directional_map_block_length):
+            for block_column in range(block_start, block_column_end, directional_map_block_length):
+                if self.segmentation_mask_distance_map[block_row, block_column] <= singularities_min_distance_from_border:
+                    continue
 
-        #         total_direction_difference = 0.0
-        #         neighbors = iter(NEIGHBORS)
-        #         neighbor_direction = get_neighbor_direction(
-        #             self.directional_map,
-        #             directional_map_block_length,
-        #             block_row,
-        #             block_column,
-        #             next(neighbors)
-        #         )
-        #         last_neighbor_direction = neighbor_direction
-        #         for next_neighbor in neighbors:
-        #             next_neighbor_direction = get_neighbor_direction(
-        #                 self.directional_map,
-        #                 directional_map_block_length,
-        #                 block_row,
-        #                 block_column,
-        #                 next_neighbor
-        #             )
-        #             total_direction_difference += compute_direction_difference(next_neighbor_direction, neighbor_direction)
-        #             neighbor_direction = next_neighbor_direction
-        #         total_direction_difference += compute_direction_difference(last_neighbor_direction, neighbor_direction)
+                total_direction_difference = 0.0
+                neighbors = iter(NEIGHBORS)
+                neighbor_direction = get_neighbor_direction(
+                    self.directional_map,
+                    directional_map_block_length,
+                    block_row,
+                    block_column,
+                    next(neighbors)
+                )
+                last_neighbor_direction = neighbor_direction
+                for next_neighbor in neighbors:
+                    next_neighbor_direction = get_neighbor_direction(
+                        self.directional_map,
+                        directional_map_block_length,
+                        block_row,
+                        block_column,
+                        next_neighbor
+                    )
+                    total_direction_difference += compute_direction_difference(next_neighbor_direction, neighbor_direction)
+                    neighbor_direction = next_neighbor_direction
+                total_direction_difference += compute_direction_difference(last_neighbor_direction, neighbor_direction)
 
-        #         poincare_index = round(total_direction_difference / PI)
-        #         singularity: Singularity
-        #         match poincare_index:
-        #             case SingualirtyPoincareIndex.Core:
-        #                 singularity = Core(block_column, block_row)
-        #             case SingualirtyPoincareIndex.Delta:
-        #                 singularity = Delta(block_column, block_row)
-        #             case SingualirtyPoincareIndex.Whorl:
-        #                 singularity = Whorl(block_column, block_row)
-        #             case _: continue
-        #         singularities.append(singularity)
-
-        # singularities_distance_threshold = int(directional_map_block_length * (2 ** 0.5))
-        # filtered_singularities: list[Singularity] = []
-        # while len(singularities) > 0:
-        #     singularity = singularities.pop()
-
-        #     singularities_in_range: list[Singularity] = [singularity]
-        #     other_singularity_index = len(singularities) - 1
-        #     while other_singularity_index >= 0:
-        #         other_singularity = singularities[other_singularity_index]
-
-        #         if type(other_singularity) != type(singularity):
-        #             continue
-
-        #         if is_close(
-        #             singularity.row,
-        #             singularity.column,
-        #             other_singularity.row,
-        #             other_singularity.column,
-        #             singularities_distance_threshold
-        #         ):
-        #             singularities_in_range.append(singularities.pop(other_singularity_index))
-        #         other_singularity_index -= 1
-
-        #     columns_sum = 0
-        #     rows_sum = 0
-        #     for singularity in singularities_in_range:
-        #         columns_sum += singularity.column
-        #         rows_sum += singularity.row
-
-        #     filtered_singularities.append(type(singularity)(
-        #         column = round(columns_sum / len(singularities_in_range)),
-        #         row = round(rows_sum / len(singularities_in_range)),
-        #     ))
+                poincare_index = round(total_direction_difference / PI)
+                singularity: Singularity
+                match poincare_index:
+                    case SingualirtyPoincareIndex.Core:
+                        singularity = Core(block_column, block_row)
+                    case SingualirtyPoincareIndex.Delta:
+                        singularity = Delta(block_column, block_row)
+                    case SingualirtyPoincareIndex.Whorl:
+                        singularity = Whorl(block_column, block_row)
+                    case _: continue
+                self.singularities.append(singularity)
 
         # CROSSING NUMBERS AND MINUTIAE EXTRACTION
         thinned_binarized = numpy.where(self.thinned_fingerprint != 0, 1, 0).astype(u8)
@@ -1316,7 +1282,7 @@ class Fingerprint:
 
             local_structure_cell_coordinates = cast(NDArray[f64], numpy.transpose(
                 minutiae_rotation_matrix
-                @ mcc_reference_cell_coordinates.coordinates.T
+                @ self.mcc_reference_cell_coordinates.coordinates.T
                 + minutiae_coordinates[:, :, numpy.newaxis],
                 axes = [0, 2, 1]
             ))
@@ -1356,8 +1322,8 @@ class Fingerprint:
     ) -> Fingerprint:
         if mcc_reference_cell_coordinates is None:
             mcc_reference_cell_coordinates = MccReferenceCellCoordinates(
-                config.mcc_total_radius,
-                config.mcc_circles_radius,
+                config.mcc_radius,
+                config.mcc_density,
             )
 
         return Fingerprint(
@@ -1411,8 +1377,8 @@ class Fingerprint:
     ) -> Fingerprint:
         if mcc_reference_cell_coordinates is None:
             mcc_reference_cell_coordinates = MccReferenceCellCoordinates(
-                MCC_TOTAL_RADIUS,
-                MCC_CIRCLES_DENSITY,
+                MCC_RADIUS,
+                MCC_DENSITY,
             )
 
         return Fingerprint(
@@ -1439,18 +1405,21 @@ class Fingerprint:
             mcc_sigmoid_mu = mcc_sigmoid_mu,
         )
 
-    def matching_score_local_structures(self, other: Self, pair_count: int) -> float:
-        distances: NDArray[f32] = numpy.linalg.norm(
-            self.local_structures[:, numpy.newaxis,:] - other.local_structures,
-            axis = -1
+    def matching_score_local_structures(self, other: Self) -> tuple[float, tuple[NDArray[i64], NDArray[i64]]]:
+        distances = numpy.sqrt(
+            numpy.sum((self.local_structures[:, numpy.newaxis,:] - other.local_structures) ** 2, - 1)
         )
-        distances /= numpy.linalg.norm(self.local_structures, axis = 1)[:, numpy.newaxis] + numpy.linalg.norm(other.local_structures, axis = 1)
+        distances: NDArray[f32] = distances / (
+            numpy.sqrt(numpy.sum(self.local_structures ** 2, 1)[:, numpy.newaxis])
+            + numpy.sqrt(numpy.sum(other.local_structures ** 2, 1))
+        )
+        pair_count = min(len(self.minutiae), len(other.minutiae)) - 1
         minutiae_matching_pairs = cast(tuple[NDArray[i64], NDArray[i64]], numpy.unravel_index(
             numpy.argpartition(distances, pair_count, None)[: pair_count],
             distances.shape
         ))
         matching_score = float(1 - numpy.mean(distances[minutiae_matching_pairs[0], minutiae_matching_pairs[1]]))
-        return matching_score
+        return matching_score, minutiae_matching_pairs
 
     @staticmethod
     def hough_alignment_parameters_ratha(
@@ -1642,7 +1611,7 @@ class Fingerprint:
         matching_score_value: float
         match matching_algorithm:
             case LocalStructuresMatching():
-                matching_score_value = self.matching_score_local_structures(template, matching_algorithm.pair_count)
+                matching_score_value, *_ = self.matching_score_local_structures(template)
             case HoughMatchingRatha():
                 matching_score_value, *_ = Fingerprint.matching_score_hough_ratha(
                     self.minutiae,
