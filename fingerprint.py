@@ -43,7 +43,7 @@ from config import (
     LOCAL_RIDGE_BLOCK_COLUMNS,
     LOCAL_RIDGE_BLOCK_ROWS,
     MATCHING_SCORE_GENUINE_THRESHOLD,
-    MCC_CIRCLES_RADIUS,
+    MCC_CIRCLES_DENSITY,
     MCC_GAUSSIAN_STD,
     MCC_SIGMOID_MU,
     MCC_SIGMOID_TAU,
@@ -177,7 +177,7 @@ class FeaturesExtractionConfig:
         minutiae_followed_length_min: Any = MINUTIAE_FOLLOWED_LENGTH_MIN,
         minutiae_followed_length_max: Any = MINUTIAE_FOLLOWED_LENGTH_MAX,
         mcc_total_radius: Any = MCC_TOTAL_RADIUS,
-        mcc_circles_radius: Any = MCC_CIRCLES_RADIUS,
+        mcc_circles_density: Any = MCC_CIRCLES_DENSITY,
         mcc_gaussian_std: Any = MCC_GAUSSIAN_STD,
         mcc_sigmoid_tau: Any = MCC_SIGMOID_TAU,
         mcc_sigmoid_mu: Any = MCC_SIGMOID_MU,
@@ -198,7 +198,7 @@ class FeaturesExtractionConfig:
         _ = assert_type(minutiae_followed_length_min, int)
         _ = assert_type(minutiae_followed_length_max, int)
         _ = assert_type(mcc_total_radius, int)
-        _ = assert_type(mcc_circles_radius, int)
+        _ = assert_type(mcc_circles_density, int)
         _ = assert_type(mcc_gaussian_std, float)
         _ = assert_type(mcc_sigmoid_tau, float)
         _ = assert_type(mcc_sigmoid_mu, float)
@@ -295,7 +295,7 @@ class FeaturesExtractionConfig:
         )
 
         self.mcc_total_radius = mcc_total_radius
-        self.mcc_circles_radius = mcc_circles_radius
+        self.mcc_circles_radius = mcc_circles_density
         self.mcc_gaussian_std = mcc_gaussian_std
         self.mcc_sigmoid_tau = mcc_sigmoid_tau
         self.mcc_sigmoid_mu = mcc_sigmoid_mu
@@ -1412,7 +1412,7 @@ class Fingerprint:
         if mcc_reference_cell_coordinates is None:
             mcc_reference_cell_coordinates = MccReferenceCellCoordinates(
                 MCC_TOTAL_RADIUS,
-                MCC_CIRCLES_RADIUS,
+                MCC_CIRCLES_DENSITY,
             )
 
         return Fingerprint(
@@ -1439,14 +1439,14 @@ class Fingerprint:
             mcc_sigmoid_mu = mcc_sigmoid_mu,
         )
 
-    def matching_score_local_structures(self, other: Self, mathing_pair_count: int) -> float:
+    def matching_score_local_structures(self, other: Self, pair_count: int) -> float:
         distances: NDArray[f32] = numpy.linalg.norm(
             self.local_structures[:, numpy.newaxis,:] - other.local_structures,
             axis = -1
         )
         distances /= numpy.linalg.norm(self.local_structures, axis = 1)[:, numpy.newaxis] + numpy.linalg.norm(other.local_structures, axis = 1)
         minutiae_matching_pairs = cast(tuple[NDArray[i64], NDArray[i64]], numpy.unravel_index(
-            numpy.argpartition(distances, mathing_pair_count),
+            numpy.argpartition(distances, pair_count, None)[: pair_count],
             distances.shape
         ))
         matching_score = float(1 - numpy.mean(distances[minutiae_matching_pairs[0], minutiae_matching_pairs[1]]))
@@ -1543,7 +1543,7 @@ class Fingerprint:
         for minutia in aligned_minutiae:
             minutia.column = round(alignment_angle_cos * minutia.column - alignment_angle_sin * minutia.row) + alignment.column
             minutia.row = round(alignment_angle_sin * minutia.column + alignment_angle_cos * minutia.row) + alignment.row
-            minutia.angle += alignment_angle_radians
+            minutia.angle -= alignment_angle_radians
         return aligned_minutiae
 
     @staticmethod

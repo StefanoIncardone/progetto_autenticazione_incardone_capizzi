@@ -43,7 +43,7 @@ verification system, with the goal of giving a quantitative performance and accu
 - [`performance_evaluation.py`](performance_evaluation.py): evaluates the performance of the
     matching algorithm in order to measure it's **FAR** and **FRR** characteristics
 
-### Interactive visualization of the features extraction and matching process
+### Interactive visualization
 
 - [`interactive_visualization.ipynb`](interactive_visualization.ipynb): interactive notebook to
     visualize in real time the features extraction and matching process

@@ -97,18 +97,14 @@ f"""Warning: ignoring file `{database_file_path}`, wrong file extension
                     result = "does not match"
                 other_average_matching_score = round(other_average_matching_score, ndigits = 2)
                 print(f"    Info: against `{other_fingerprints_tag}`   = {other_average_matching_score:.2f}/{FM_CONFIG.matching_score_genuine_threshold.value:.2f} -> {result}")
+        #     break # for visualization
+        # break # for visualization
 
-    far: float
-    if (real_rejections_count := false_positives + true_negatives) == 0:
-        far = float("nan")
-    else:
-        far = round(false_positives * 100 / real_rejections_count, ndigits = 1)
+    real_rejections_count = false_positives + true_negatives
+    far = round(false_positives * 100 / real_rejections_count, ndigits = 2)
 
-    frr: float
-    if (real_acceptions_count := false_negatives + true_positives) == 0:
-        frr = float("nan")
-    else:
-        frr = round(false_negatives * 100 / real_acceptions_count, ndigits = 1)
+    real_acceptions_count = false_negatives + true_positives
+    frr = round(false_negatives * 100 / real_acceptions_count, ndigits = 2)
 
     print(f"Result: FAR = {far}%, FRR = {frr}%")
 

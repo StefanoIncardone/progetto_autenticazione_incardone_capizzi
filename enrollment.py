@@ -73,7 +73,7 @@ f"""Error: wrong file format
         acquisitions = database.setdefault(database_finger_tag, [])
         acquisitions.append(fingerprint)
 
-    for (database_finger_tag, acquisitions) in database.items():
+    for database_finger_tag, acquisitions in database.items():
         _root, *components, tag = database_finger_tag.split(os.path.sep)
         sub_dirs = os.path.join(database_dir_path, *components)
         os.makedirs(sub_dirs, exist_ok = True)

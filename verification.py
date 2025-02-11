@@ -19,7 +19,7 @@ def help_message(executable_name: str) -> str:
     return f"""{USAGE}: {executable_name} [{COMMAND}]
 
 {COMMAND}:
-    {HelpCommand.Full}, {HelpCommand.Short}, {HelpCommand.Long}                                              Display this message (default: displayed when no arguments are provided)
+    {HelpCommand.Full}, {HelpCommand.Short}, {HelpCommand.Long}                                Display this message (default: displayed when no arguments are provided)
     <{IDENTITY_FULL_TAG}> <{TEMPLATE_FULL_FINGER_TAG}>   Verify if the subject with tag `{IDENTITY_FULL_TAG}` matches the one with `{TEMPLATE_FULL_FINGER_TAG}`"""
 
 def main() -> ExitCode:
@@ -140,13 +140,12 @@ f"""Error: ignoring file `{template_database_path}`, wrong file extension
         total_matching_score += matching_score
 
     average_matching_score = total_matching_score / total_fingerprints
-    result: str
-    if average_matching_score >= FM_CONFIG.matching_score_genuine_threshold.value:
-        result = "matches"
-    else:
-        result = "does not match"
     average_matching_score = round(average_matching_score, ndigits = 2)
-    print(f"Info: verifying `{identity_full_tag}` against `{template_full_finger_tag}` = {average_matching_score:.2f}/{FM_CONFIG.matching_score_genuine_threshold.value:.2f} -> {result}")
+    print(f"Info: verifying `{identity_full_tag}` against `{template_full_finger_tag}` = {average_matching_score:.2f}/{FM_CONFIG.matching_score_genuine_threshold.value:.2f}")
+    if average_matching_score >= FM_CONFIG.matching_score_genuine_threshold.value:
+        print(f"Result: fingerprint `{identity_full_tag}` matches the identity `{template_full_finger_tag}`")
+    else:
+        print(f"Result: fingerprint `{identity_full_tag}` does not match any known identity")
 
     return ExitCode.Success
 

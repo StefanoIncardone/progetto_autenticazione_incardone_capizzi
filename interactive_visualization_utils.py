@@ -574,22 +574,17 @@ def draw_matching_hough(
             lineType = cv2.LINE_AA
         )
 
+    color: ColorBGR
     if matching_score >= matching_score_threshold:
-        matching_hough: NDArray[u8] = cv2.rectangle(
-            matching_hough,
-            pt1 = (0, 0),
-            pt2 = (identity_columns - 1, identity_rows - 1),
-            color = GREEN,
-            thickness = 1,
-            lineType = cv2.LINE_AA,
-        ) # type: ignore
+        color = GREEN
     else:
-        matching_hough: NDArray[u8] = cv2.rectangle(
-            matching_hough,
-            pt1 = (0, 0),
-            pt2 = (identity_columns - 1, identity_rows - 1),
-            color = RED,
-            thickness = 1,
-            lineType = cv2.LINE_AA,
-        ) # type: ignore
+        color = RED
+    matching_hough: NDArray[u8] = cv2.rectangle(
+        matching_hough,
+        pt1 = (0, 0),
+        pt2 = (identity_columns - 1, identity_rows - 1),
+        color = color,
+        thickness = 1,
+        lineType = cv2.LINE_AA,
+    ) # type: ignore
     return matching_hough
