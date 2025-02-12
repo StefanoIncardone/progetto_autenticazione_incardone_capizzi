@@ -54,7 +54,7 @@ MINUTIAE_FOLLOWED_LENGTH_MAX = 20
 
 MCC_RADIUS = 50
 MCC_DENSITY = 16
-MCC_GAUSSIAN_STD = 7.0
+MCC_GAUSSIAN_STD = 8.0
 MCC_SIGMOID_TAU = 400.0
 MCC_SIGMOID_MU = 1e-2
 
@@ -67,9 +67,9 @@ class MatchingAlgorithmKind(IntEnum):
     HoughRatha = 1
     HoughChouta = 2
 
-MATCHING_ALGORITHM = MatchingAlgorithmKind.HoughChouta
+MATCHING_ALGORITHM = MatchingAlgorithmKind.LocalStructures
 
-LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 3
+LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 1
 
 HOUGH_MATCHING_PIXELS_DISTANCE_THRESHOLD = 25
 """Must be in the range [0, 255 * sqrt(2)]"""

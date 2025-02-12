@@ -1405,7 +1405,7 @@ class Fingerprint:
             mcc_sigmoid_mu = mcc_sigmoid_mu,
         )
 
-    def matching_score_local_structures(self, other: Self) -> tuple[float, tuple[NDArray[i64], NDArray[i64]]]:
+    def matching_score_local_structures(self, other: Self, pair_count: int) -> tuple[float, tuple[NDArray[i64], NDArray[i64]]]:
         distances = numpy.sqrt(
             numpy.sum((self.local_structures[:, numpy.newaxis,:] - other.local_structures) ** 2, - 1)
         )
@@ -1413,7 +1413,6 @@ class Fingerprint:
             numpy.sqrt(numpy.sum(self.local_structures ** 2, 1)[:, numpy.newaxis])
             + numpy.sqrt(numpy.sum(other.local_structures ** 2, 1))
         )
-        pair_count = min(len(self.minutiae), len(other.minutiae)) - 1
         minutiae_matching_pairs = cast(tuple[NDArray[i64], NDArray[i64]], numpy.unravel_index(
             numpy.argpartition(distances, pair_count, None)[: pair_count],
             distances.shape
@@ -1611,7 +1610,7 @@ class Fingerprint:
         matching_score_value: float
         match matching_algorithm:
             case LocalStructuresMatching():
-                matching_score_value, *_ = self.matching_score_local_structures(template)
+                matching_score_value, *_ = self.matching_score_local_structures(template, matching_algorithm.pair_count)
             case HoughMatchingRatha():
                 matching_score_value, *_ = Fingerprint.matching_score_hough_ratha(
                     self.minutiae,
