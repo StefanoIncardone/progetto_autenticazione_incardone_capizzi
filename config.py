@@ -62,7 +62,7 @@ class MatchingAlgorithmKind(IntEnum):
     HoughRatha = 1
     HoughChouta = 2
 
-MATCHING_ALGORITHM = MatchingAlgorithmKind.HoughChouta
+MATCHING_ALGORITHM = MatchingAlgorithmKind.LocalStructures
 
 LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 1
 
