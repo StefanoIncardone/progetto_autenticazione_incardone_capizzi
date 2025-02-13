@@ -1,11 +1,6 @@
 from __future__ import annotations
 from enum import IntEnum
 
-# ENROLLMENT
-DATASET_DIR_PATH = "datasets"
-FINGERPRINTS_IMAGE_FILE_EXTENSION = ".tif"
-DATABASE_DIR_PATH = "database"
-
 # FEATURE EXTRACTION
 GRADIENT_SOBEL_FILTER_LENGTH = 1
 """Must be odd and in the range [1, 31]"""
@@ -54,7 +49,7 @@ MINUTIAE_FOLLOWED_LENGTH_MAX = 20
 
 MCC_RADIUS = 50
 MCC_DENSITY = 16
-MCC_GAUSSIAN_STD = 7.0
+MCC_GAUSSIAN_STD = 8.0
 MCC_SIGMOID_TAU = 400.0
 MCC_SIGMOID_MU = 1e-2
 
@@ -69,7 +64,7 @@ class MatchingAlgorithmKind(IntEnum):
 
 MATCHING_ALGORITHM = MatchingAlgorithmKind.HoughChouta
 
-LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 3
+LOCAL_STRUCTURES_MATCHING_PAIR_COUNT = 1
 
 HOUGH_MATCHING_PIXELS_DISTANCE_THRESHOLD = 25
 """Must be in the range [0, 255 * sqrt(2)]"""

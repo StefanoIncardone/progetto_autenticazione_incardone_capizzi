@@ -1,6 +1,10 @@
 from enum import IntEnum
 from typing import NoReturn, override
 
+DATASET_DIR_PATH = "datasets"
+FINGERPRINTS_IMAGE_FILE_EXTENSION = ".tif"
+
+DATABASE_DIR_PATH = "database"
 FINGERPRINTS_DATABASE_FILE_EXTENSION = ".npy"
 
 class HelpCommand(IntEnum):
